@@ -1,5 +1,7 @@
 pub mod bencode;
-use bencode::bcode_to_u8;
+pub mod utils;
+use bencode::decode;
+use utils::bcode_to_u8;
 
 // IMPORTANT: Uncomment this line next
 
@@ -8,8 +10,10 @@ use bencode::bcode_to_u8;
 // }
 
 fn main() {
-    let data = "i-0e";
-    println!("{}", bcode_to_u8(data));
+    let data = "i-556e4:highi34e";
+    let mut u8s = bcode_to_u8(data);
+    decode(&mut u8s);
+    // println!("{}", decode(&mut u8s).expect("Failed"));
 }
 
 // fn init_decode(data: &str) {

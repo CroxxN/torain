@@ -1,6 +1,6 @@
 pub enum BTypes {
-    BSTRING,
-    INT,
+    BSTRING(String),
+    INT(i64),
     LIST,
     DICT,
     UNKNOWN,
@@ -12,29 +12,30 @@ pub enum DecodeError {
     IntParseError,
 }
 
-pub fn bcode_to_u8<'a>(bcode: &'a str) -> i64 {
-    let mut u8s = bcode.bytes().map(|b| b);
-    decode(&mut u8s).expect("Failed")
-}
-
-pub fn decode<T>(data: &mut T) -> Result<i64, DecodeError>
+pub fn decode<T>(data: &mut T)
 where
     T: Iterator<Item = u8>,
 {
-    let res = match data.next() {
-        Some(t) => Ok(handle_data_type(data, t)),
-        None => Err(DecodeError::EOF),
-    };
-    res
+    while let Some(t) = data.next() {
+        if let Ok(r) = handle_data_type(data, t) {
+            match r {
+                BTypes::INT(i) => println!("{}", i),
+                BTypes::BSTRING(s) => println!("{}", s),
+                _ => unimplemented!(),
+            }
+        }
+    }
 }
 
-pub fn handle_data_type<T>(data: &mut T, anchor: u8) -> i64
+pub fn handle_data_type<T>(data: &mut T, anchor: u8) -> Result<BTypes, DecodeError>
 where
     T: Iterator<Item = u8>,
 {
     match anchor {
-        b'i' => bcode_interger(data).expect("Some typa error"),
-        _ => unimplemented!(),
+        b'i' => Ok(BTypes::INT(bcode_interger(data)?)),
+        b'l' => unimplemented!(),
+        b'd' => unimplemented!(),
+        _ => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
     }
 }
 
@@ -43,16 +44,12 @@ where
     T: Iterator<Item = u8>,
 {
     let mut holder: Vec<u8> = Vec::new();
-    let mut sign = 1i8;
+
     loop {
         match int_seq.next() {
             Some(t) => {
                 if t == b'e' {
                     break;
-                }
-                if t == b'-' {
-                    sign = -1;
-                    continue;
                 }
                 holder.push(t)
             }
@@ -60,11 +57,10 @@ where
         };
     }
     let inter_string = vec_to_string(holder);
-    if let Ok(t) = string_to_int(inter_string) {
-        Ok(t * sign as i64)
-    } else {
-        Err(DecodeError::IntParseError)
-    }
+
+    string_to_int(inter_string)
+        .map(|res| res)
+        .map_err(|_| DecodeError::IntParseError)
 }
 
 fn vec_to_string(holder: Vec<u8>) -> String {
@@ -81,4 +77,16 @@ fn string_to_int(init: String) -> Result<i64, DecodeError> {
     } else {
         Err(DecodeError::IntParseError)
     }
+}
+
+fn bcode_string<T>(str_seq: &mut T, anchor: u8) -> Result<String, DecodeError>
+where
+    T: Iterator<Item = u8>,
+{
+    let mut vec_u8: Vec<u8> = Vec::new();
+    vec_u8.push(anchor);
+    vec_u8.extend(str_seq.take_while(|c| *c != b':'));
+    let length = string_to_int(vec_to_string(vec_u8))? as usize;
+    let str_u8: Vec<u8> = str_seq.take(length).collect();
+    Ok(vec_to_string(str_u8))
 }
