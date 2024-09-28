@@ -10,7 +10,7 @@ use utils::bcode_to_u8;
 // }
 
 fn main() {
-    let data = "i-556e4:highi34e";
+    let data = "li-556e4:highi34eeli45e3:broe";
     let mut u8s = bcode_to_u8(data);
     decode(&mut u8s);
     // println!("{}", decode(&mut u8s).expect("Failed"));

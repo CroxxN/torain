@@ -1,7 +1,7 @@
 pub enum BTypes {
     BSTRING(String),
     INT(i64),
-    LIST,
+    LIST(Vec<BTypes>),
     DICT,
     UNKNOWN,
 }
@@ -18,12 +18,17 @@ where
 {
     while let Some(t) = data.next() {
         if let Ok(r) = handle_data_type(data, t) {
-            match r {
-                BTypes::INT(i) => println!("{}", i),
-                BTypes::BSTRING(s) => println!("{}", s),
-                _ => unimplemented!(),
-            }
+            publish_btypes(r)
         }
+    }
+}
+
+fn publish_btypes(b: BTypes) {
+    match b {
+        BTypes::INT(i) => println!("{}", i),
+        BTypes::BSTRING(s) => println!("{}", s),
+        BTypes::LIST(l) => l.into_iter().for_each(|d| publish_btypes(d)),
+        _ => (),
     }
 }
 
@@ -33,7 +38,7 @@ where
 {
     match anchor {
         b'i' => Ok(BTypes::INT(bcode_interger(data)?)),
-        b'l' => unimplemented!(),
+        b'l' => Ok(BTypes::LIST(bcode_list(data)?)),
         b'd' => unimplemented!(),
         _ => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
     }
@@ -89,4 +94,18 @@ where
     let length = string_to_int(vec_to_string(vec_u8))? as usize;
     let str_u8: Vec<u8> = str_seq.take(length).collect();
     Ok(vec_to_string(str_u8))
+}
+
+fn bcode_list<T>(list_seq: &mut T) -> Result<Vec<BTypes>, DecodeError>
+where
+    T: Iterator<Item = u8>,
+{
+    let mut holder = vec![];
+    while let Some(anchor) = list_seq.next() {
+        if anchor == b'e' {
+            return Ok(holder);
+        }
+        holder.push(handle_data_type(list_seq, anchor)?);
+    }
+    Ok(holder)
 }
