@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
+
+#[derive(PartialEq, Eq)]
 pub enum BTypes {
     BSTRING(String),
     INT(i64),
     LIST(Vec<BTypes>),
-    DICT,
-    UNKNOWN,
+    DICT(BTreeMap<String, BTypes>),
 }
 
 #[derive(Debug)]
@@ -28,7 +30,12 @@ fn publish_btypes(b: BTypes) {
         BTypes::INT(i) => println!("{}", i),
         BTypes::BSTRING(s) => println!("{}", s),
         BTypes::LIST(l) => l.into_iter().for_each(|d| publish_btypes(d)),
-        _ => (),
+        BTypes::DICT(d) => {
+            d.into_iter().for_each(|(k, v)| {
+                print!("{}: ", k);
+                publish_btypes(v);
+            });
+        }
     }
 }
 
@@ -39,7 +46,7 @@ where
     match anchor {
         b'i' => Ok(BTypes::INT(bcode_interger(data)?)),
         b'l' => Ok(BTypes::LIST(bcode_list(data)?)),
-        b'd' => unimplemented!(),
+        b'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
         _ => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
     }
 }
@@ -108,4 +115,23 @@ where
         holder.push(handle_data_type(list_seq, anchor)?);
     }
     Ok(holder)
+}
+
+fn bcode_dict<T>(d_seq: &mut T) -> Result<BTreeMap<String, BTypes>, DecodeError>
+where
+    T: Iterator<Item = u8>,
+{
+    let mut hmap = BTreeMap::new();
+    while let Some(anchor) = d_seq.next() {
+        if anchor == b'e' {
+            return Ok(hmap);
+        }
+        let bt = handle_data_type(d_seq, anchor)?;
+        if let BTypes::BSTRING(s) = bt {
+            if let Some(anchor) = d_seq.next() {
+                hmap.insert(s, handle_data_type(d_seq, anchor)?);
+            }
+        }
+    }
+    Ok(hmap)
 }
