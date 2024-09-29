@@ -47,7 +47,8 @@ where
         b'i' => Ok(BTypes::INT(bcode_interger(data)?)),
         b'l' => Ok(BTypes::LIST(bcode_list(data)?)),
         b'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
-        _ => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
+        b'0'..b'9' => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
+        _ => Ok(BTypes::BSTRING("".to_string())),
     }
 }
 
