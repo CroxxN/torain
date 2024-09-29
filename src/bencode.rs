@@ -43,12 +43,15 @@ pub fn handle_data_type<T>(data: &mut T, anchor: u8) -> Result<BTypes, DecodeErr
 where
     T: Iterator<Item = u8>,
 {
-    match anchor {
-        b'i' => Ok(BTypes::INT(bcode_interger(data)?)),
-        b'l' => Ok(BTypes::LIST(bcode_list(data)?)),
-        b'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
-        b'0'..b'9' => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
-        _ => Ok(BTypes::BSTRING("".to_string())),
+    match anchor as char {
+        'i' => Ok(BTypes::INT(bcode_interger(data)?)),
+        'l' => Ok(BTypes::LIST(bcode_list(data)?)),
+        'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
+        '0'..='9' => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
+        _ => {
+            // println!("Error: Unknown character '{}' found", anchor);
+            Err(DecodeError::EOF)
+        }
     }
 }
 

@@ -2,6 +2,7 @@ pub mod bencode;
 pub mod utils;
 use bencode::decode;
 use std::fs;
+use utils::bcode_to_u8;
 
 // IMPORTANT: Uncomment this line next
 
@@ -11,13 +12,14 @@ use std::fs;
 
 fn main() {
     // test data
-    let _data = "d8:announce27:udp://open.demonii.com:1337";
+    // let data = "3:h\nw";
     // let mut fd = fs::File::open("pulp_fiction.torrent").expect("Failed to open file");
     // let mut data = String::new();
     // fd.read_to_string(&mut data).expect("Failed to open file");
-    let mut u8s = fs::read("pulp_fiction.torrent")
-        .expect("Failed to parse file")
-        .into_iter();
+    let mut raw = fs::read("pulp_fiction.torrent").expect("Failed to parse file");
+    _ = raw.pop();
+    let mut u8s = raw.into_iter();
+    // let mut u8s = bcode_to_u8(data);
     decode(&mut u8s);
     // println!("{}", decode(&mut u8s).expect("Failed"));
 }
