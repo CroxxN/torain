@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, string::FromUtf8Error};
 
 #[derive(PartialEq, Eq)]
 pub enum BTypes {
-    BSTRING(String),
+    BSTRING(Vec<u8>),
     INT(i64),
     LIST(Vec<BTypes>),
     DICT(BTreeMap<String, BTypes>),
@@ -20,23 +20,31 @@ where
 {
     while let Some(t) = data.next() {
         if let Ok(r) = handle_data_type(data, t) {
-            publish_btypes(r)
+            _ = publish_btypes(r);
         }
     }
 }
 
-fn publish_btypes(b: BTypes) {
+fn publish_btypes(b: BTypes) -> Result<(), FromUtf8Error> {
     match b {
         BTypes::INT(i) => println!("{}", i),
-        BTypes::BSTRING(s) => println!("{}", s),
-        BTypes::LIST(l) => l.into_iter().for_each(|d| publish_btypes(d)),
+        BTypes::BSTRING(b) => {
+            if let Ok(s) = String::from_utf8(b.clone()) {
+                println!("{}", s);
+            } else {
+                b.into_iter().for_each(|b| print!("{:#02x} ", b));
+                println!();
+            }
+        }
+        BTypes::LIST(l) => l.into_iter().for_each(|d| _ = publish_btypes(d)),
         BTypes::DICT(d) => {
             d.into_iter().for_each(|(k, v)| {
                 print!("{}: ", k);
-                publish_btypes(v);
+                _ = publish_btypes(v);
             });
         }
-    }
+    };
+    Ok(())
 }
 
 pub fn handle_data_type<T>(data: &mut T, anchor: u8) -> Result<BTypes, DecodeError>
@@ -49,7 +57,7 @@ where
         'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
         '0'..='9' => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
         _ => {
-            // println!("Error: Unknown character '{}' found", anchor);
+            println!("Error: Unknown character '{}' found", anchor);
             Err(DecodeError::EOF)
         }
     }
@@ -80,9 +88,6 @@ where
 }
 
 fn vec_to_string(holder: Vec<u8>) -> String {
-    if holder.is_empty() {
-        return "0".to_string();
-    }
     let vecstring = holder.iter().map(|&t| t as char).collect::<String>();
     vecstring
 }
@@ -95,7 +100,7 @@ fn string_to_int(init: String) -> Result<i64, DecodeError> {
     }
 }
 
-fn bcode_string<T>(str_seq: &mut T, anchor: u8) -> Result<String, DecodeError>
+fn bcode_string<T>(str_seq: &mut T, anchor: u8) -> Result<Vec<u8>, DecodeError>
 where
     T: Iterator<Item = u8>,
 {
@@ -104,7 +109,7 @@ where
     vec_u8.extend(str_seq.take_while(|c| *c != b':'));
     let length = string_to_int(vec_to_string(vec_u8))? as usize;
     let str_u8: Vec<u8> = str_seq.take(length).collect();
-    Ok(vec_to_string(str_u8))
+    Ok(str_u8)
 }
 
 fn bcode_list<T>(list_seq: &mut T) -> Result<Vec<BTypes>, DecodeError>
@@ -133,7 +138,7 @@ where
         let bt = handle_data_type(d_seq, anchor)?;
         if let BTypes::BSTRING(s) = bt {
             if let Some(anchor) = d_seq.next() {
-                hmap.insert(s, handle_data_type(d_seq, anchor)?);
+                hmap.insert(vec_to_string(s), handle_data_type(d_seq, anchor)?);
             }
         }
     }
