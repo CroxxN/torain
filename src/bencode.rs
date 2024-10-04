@@ -56,10 +56,7 @@ where
         'l' => Ok(BTypes::LIST(bcode_list(data)?)),
         'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
         '0'..='9' => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
-        _ => {
-            println!("Error: Unknown character '{}' found", anchor);
-            Err(DecodeError::EOF)
-        }
+        _ => Err(DecodeError::EOF),
     }
 }
 
@@ -82,9 +79,8 @@ where
     }
     let inter_string = vec_to_string(holder);
 
-    string_to_int(inter_string)
-        .map(|res| res)
-        .map_err(|_| DecodeError::IntParseError)
+    string_to_int(inter_string).map(|res| res)
+    // .map_err(|_| DecodeError::IntParseError)
 }
 
 fn vec_to_string(holder: Vec<u8>) -> String {
