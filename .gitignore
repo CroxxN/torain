@@ -1,2 +1,7 @@
 **/target
 *.torrent
+
+
+# Added by cargo
+
+/target
