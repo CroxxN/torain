@@ -1,5 +1,5 @@
 pub mod bencode;
-pub mod torrent;
+pub mod error;
 pub mod utils;
 use bencode::decode;
 use std::fs;

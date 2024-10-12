@@ -1,3 +1,4 @@
+use crate::error::DecodeError;
 use std::{collections::BTreeMap, string::FromUtf8Error};
 
 #[derive(PartialEq, Eq)]
@@ -6,12 +7,6 @@ pub enum BTypes {
     INT(i64),
     LIST(Vec<BTypes>),
     DICT(BTreeMap<String, BTypes>),
-}
-
-#[derive(Debug)]
-pub enum DecodeError {
-    EOF,
-    IntParseError,
 }
 
 pub fn decode<T>(data: &mut T)
@@ -89,11 +84,7 @@ fn vec_to_string(holder: Vec<u8>) -> String {
 }
 
 fn string_to_int(init: String) -> Result<i64, DecodeError> {
-    if let Ok(v) = init.parse::<i64>() {
-        Ok(v)
-    } else {
-        Err(DecodeError::IntParseError)
-    }
+    init.parse::<i64>().map_err(|e| e.into())
 }
 
 fn bcode_string<T>(str_seq: &mut T, anchor: u8) -> Result<Vec<u8>, DecodeError>
