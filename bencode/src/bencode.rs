@@ -1,7 +1,7 @@
 use crate::error::DecodeError;
 use std::{collections::BTreeMap, string::FromUtf8Error};
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum BTypes {
     BSTRING(Vec<u8>),
     INT(i64),
@@ -9,18 +9,18 @@ pub enum BTypes {
     DICT(BTreeMap<String, BTypes>),
 }
 
-pub fn decode<T>(data: &mut T)
+pub fn decode<T>(data: &mut T) -> Result<BTypes, DecodeError>
 where
     T: Iterator<Item = u8>,
 {
-    while let Some(t) = data.next() {
-        if let Ok(r) = handle_data_type(data, t) {
-            _ = publish_btypes(r);
-        }
+    if let Some(t) = data.next() {
+        handle_data_type(data, t)
+    } else {
+        Err(DecodeError::EOF)
     }
 }
 
-fn publish_btypes(b: BTypes) -> Result<(), FromUtf8Error> {
+fn _publish_btypes(b: BTypes) -> Result<(), FromUtf8Error> {
     match b {
         BTypes::INT(i) => println!("{}", i),
         BTypes::BSTRING(b) => {
@@ -31,11 +31,11 @@ fn publish_btypes(b: BTypes) -> Result<(), FromUtf8Error> {
                 println!();
             }
         }
-        BTypes::LIST(l) => l.into_iter().for_each(|d| _ = publish_btypes(d)),
+        BTypes::LIST(l) => l.into_iter().for_each(|d| _ = _publish_btypes(d)),
         BTypes::DICT(d) => {
             d.into_iter().for_each(|(k, v)| {
                 print!("{}: ", k);
-                _ = publish_btypes(v);
+                _ = _publish_btypes(v);
             });
         }
     };
@@ -74,13 +74,8 @@ where
     }
     let inter_string = vec_to_string(holder);
 
-    string_to_int(inter_string).map(|res| res)
+    string_to_int(inter_string)
     // .map_err(|_| DecodeError::IntParseError)
-}
-
-fn vec_to_string(holder: Vec<u8>) -> String {
-    let vecstring = holder.iter().map(|&t| t as char).collect::<String>();
-    vecstring
 }
 
 fn string_to_int(init: String) -> Result<i64, DecodeError> {
@@ -130,4 +125,36 @@ where
         }
     }
     Ok(hmap)
+}
+
+mod tests {
+    use crate::bencode;
+
+    #[test]
+    fn integer() {
+        assert_eq!(
+            bencode::decode(&mut "i64e".bytes()).ok(),
+            Some(bencode::BTypes::INT(64))
+        );
+        assert_eq!(
+            bencode::decode(&mut "i-64e".bytes()).ok(),
+            Some(bencode::BTypes::INT(-64))
+        );
+        assert_eq!(
+            bencode::decode(&mut "i0e".bytes()).ok(),
+            Some(bencode::BTypes::INT(0))
+        );
+        assert_eq!(
+            bencode::decode(&mut "i-0e".bytes()).ok(),
+            Some(bencode::BTypes::INT(0))
+        );
+    }
+
+    #[test]
+    fn bstrings() {
+        assert_eq!(
+            bencode::decode(&mut "5:hello".to_owned().bytes()).ok(),
+            Some(bencode::BTypes::BSTRING("hello".to_owned().into_bytes()))
+        );
+    }
 }
