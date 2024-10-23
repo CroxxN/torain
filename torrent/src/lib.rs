@@ -1,2 +1,2 @@
-pub mod torrent;
 pub mod error;
+pub mod torrent;

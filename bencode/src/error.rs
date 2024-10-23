@@ -1,3 +1,5 @@
+use crate::utils::BencodeErr;
+
 #[derive(Debug)]
 pub enum DecodeError {
     EOF,
@@ -16,5 +18,11 @@ impl std::fmt::Display for DecodeError {
 impl From<std::num::ParseIntError> for DecodeError {
     fn from(value: std::num::ParseIntError) -> Self {
         Self::IntParseError(value)
+    }
+}
+
+impl From<BencodeErr> for DecodeError {
+    fn from(_value: BencodeErr) -> Self {
+        Self::EOF
     }
 }

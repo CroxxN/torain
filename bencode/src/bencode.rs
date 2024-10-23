@@ -1,4 +1,5 @@
 use crate::error::DecodeError;
+use crate::utils::vec_to_string;
 use std::{collections::BTreeMap, string::FromUtf8Error};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -72,7 +73,7 @@ where
             None => return Err(DecodeError::EOF),
         };
     }
-    let inter_string = vec_to_string(holder);
+    let inter_string = vec_to_string(&holder);
 
     string_to_int(inter_string)
     // .map_err(|_| DecodeError::IntParseError)
@@ -89,7 +90,7 @@ where
     let mut vec_u8: Vec<u8> = Vec::new();
     vec_u8.push(anchor);
     vec_u8.extend(str_seq.take_while(|c| *c != b':'));
-    let length = string_to_int(vec_to_string(vec_u8))? as usize;
+    let length = string_to_int(vec_to_string(&vec_u8))? as usize;
     let str_u8: Vec<u8> = str_seq.take(length).collect();
     Ok(str_u8)
 }
@@ -120,7 +121,7 @@ where
         let bt = handle_data_type(d_seq, anchor)?;
         if let BTypes::BSTRING(s) = bt {
             if let Some(anchor) = d_seq.next() {
-                hmap.insert(vec_to_string(s), handle_data_type(d_seq, anchor)?);
+                hmap.insert(vec_to_string(&s), handle_data_type(d_seq, anchor)?);
             }
         }
     }
@@ -128,7 +129,8 @@ where
 }
 
 mod tests {
-    use crate::bencode;
+
+    use crate::bencode::{self, decode, BTypes};
 
     #[test]
     fn integer() {
@@ -156,5 +158,18 @@ mod tests {
             bencode::decode(&mut "5:hello".to_owned().bytes()).ok(),
             Some(bencode::BTypes::BSTRING("hello".to_owned().into_bytes()))
         );
+    }
+    #[test]
+    fn torrent_file() {
+        use std::{fs::File, io::Read};
+
+        let mut file = File::open("debian.torrent").unwrap();
+        let mut content = vec![];
+        file.read_to_end(&mut content).unwrap();
+
+        let mut bytes = content.into_iter();
+        _ = decode(&mut bytes);
+        // check that all the data have been decoded
+        assert_eq!(0, bytes.len());
     }
 }
