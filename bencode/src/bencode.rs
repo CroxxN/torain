@@ -128,9 +128,10 @@ where
     Ok(hmap)
 }
 
+#[cfg(test)]
 mod tests {
 
-    use crate::bencode::{self, decode, BTypes};
+    use crate::bencode;
 
     #[test]
     fn integer() {
@@ -168,7 +169,7 @@ mod tests {
         file.read_to_end(&mut content).unwrap();
 
         let mut bytes = content.into_iter();
-        _ = decode(&mut bytes);
+        _ = bencode::decode(&mut bytes);
         // check that all the data have been decoded
         assert_eq!(0, bytes.len());
     }

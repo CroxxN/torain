@@ -1,5 +1,6 @@
-use crate::bencode::BTypes;
+use crate::bencode::{self, BTypes};
 
+#[derive(Debug)]
 pub enum BencodeErr {
     Berr,
 }
@@ -13,11 +14,57 @@ pub fn vec_to_string(holder: &Vec<u8>) -> String {
     vecstring
 }
 
+pub fn decode_option<'a, T: TryFrom<&'a bencode::BTypes, Error = BencodeErr>>(
+    value: Option<&'a BTypes>,
+) -> Result<Option<T>, BencodeErr> {
+    if let Some(v) = value {
+        Ok(Some(v.try_into()?))
+    } else {
+        Ok(None)
+    }
+}
+
 impl TryFrom<&BTypes> for String {
     type Error = BencodeErr;
     fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
         if let BTypes::BSTRING(s) = value {
             Ok(vec_to_string(s))
+        } else {
+            Err(BencodeErr::Berr)
+        }
+    }
+}
+
+impl TryFrom<&BTypes> for usize {
+    type Error = BencodeErr;
+    fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
+        if let BTypes::INT(s) = value {
+            Ok(*s as usize)
+        } else {
+            Err(BencodeErr::Berr)
+        }
+    }
+}
+
+impl TryFrom<&BTypes> for Vec<String> {
+    type Error = BencodeErr;
+
+    fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
+        let store: Vec<String>;
+        if let BTypes::LIST(l) = value {
+            store = l.iter().filter_map(|v| v.try_into().ok()).collect();
+        } else {
+            return Err(BencodeErr::Berr);
+        }
+        Ok(store)
+    }
+}
+
+impl TryFrom<&BTypes> for Vec<u8> {
+    type Error = BencodeErr;
+    fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
+        if let BTypes::BSTRING(s) = value {
+            Ok(s.to_vec())
         } else {
             Err(BencodeErr::Berr)
         }

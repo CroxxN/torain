@@ -1,3 +1,4 @@
+use core::fmt;
 use std::fmt::Display;
 
 #[derive(Debug)]
