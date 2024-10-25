@@ -3,7 +3,7 @@
 ### milestone
 
 - [x] bencode parser
-- [ ] parse .torrent file
+- [x] parse .torrent file
 - [ ] handle magnet links
 - [ ] download files
 

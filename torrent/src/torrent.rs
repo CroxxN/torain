@@ -133,6 +133,7 @@ mod test {
     use super::Torrent;
 
     #[test]
+    // single file mode
     fn debain() {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
@@ -152,5 +153,15 @@ mod test {
             torrent.info.mode,
             FileMode::SingleMode { length: 661651456 }
         );
+    }
+
+    #[test]
+    // multi-file mode
+    fn pulp_fiction() {
+        let fs = "pulpfiction.torrent";
+        let torrent = Torrent::from_file(fs).unwrap();
+        assert_eq!(torrent.announce, "udp://open.demonii.com:1337");
+        assert_eq!(torrent.created_by, Some("uTorrent/2210".to_string()));
+        assert_eq!(torrent.creation_date, Some(1332518251));
     }
 }
