@@ -6,7 +6,7 @@ edition = "2021"
 [workspace]
 members = [
   "bencode",
-  "torrent",
+  "torrent", "uttd",
 ]
 
 [dependencies]
