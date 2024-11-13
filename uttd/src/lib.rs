@@ -1,6 +1,13 @@
+mod urutil;
+
 use std::{
     net::{AddrParseError, IpAddr, SocketAddr},
     str::FromStr,
+};
+
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
 };
 
 pub enum UttdError {
@@ -21,7 +28,7 @@ impl From<std::io::Error> for UttdError {
 }
 
 pub struct Url {
-    stream: tokio::net::TcpStream,
+    stream: TcpStream,
 }
 
 impl Url {
@@ -30,5 +37,11 @@ impl Url {
         let sock_addr = SocketAddr::new(ip, port);
         let stream = tokio::net::TcpStream::connect(sock_addr).await?;
         Ok(Url { stream })
+    }
+    pub async fn send(&mut self, data: &[u8]) -> Result<&mut [u8], UttdError> {
+        let mut res: &mut [u8] = &mut [];
+        self.stream.write_all(data).await?;
+        self.stream.read_buf(&mut res).await?;
+        Ok(res)
     }
 }
