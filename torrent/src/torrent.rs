@@ -137,6 +137,7 @@ mod test {
     fn debain() {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
+        println!("{:?}", torrent);
         assert_eq!(
             torrent.announce,
             "http://bttracker.debian.org:6969/announce"

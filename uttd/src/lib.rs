@@ -38,7 +38,7 @@ impl Url {
         let stream = tokio::net::TcpStream::connect(sock_addr).await?;
         Ok(Url { stream })
     }
-    pub async fn send(&mut self, data: &[u8]) -> Result<&mut [u8], UttdError> {
+    async fn send(&mut self, data: &[u8]) -> Result<&mut [u8], UttdError> {
         let mut res: &mut [u8] = &mut [];
         self.stream.write_all(data).await?;
         self.stream.read_buf(&mut res).await?;
