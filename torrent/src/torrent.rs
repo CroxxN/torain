@@ -156,6 +156,7 @@ mod test {
         );
     }
 
+    // download the pulp fiction torrent to test this -- for educational purposes only
     #[test]
     // multi-file mode
     fn pulp_fiction() {
