@@ -181,7 +181,7 @@ mod test {
     }
 
     #[test]
-    fn info_hash() {
+    fn single_info_hash() {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let mut ascii_hash = String::new();
@@ -192,6 +192,21 @@ mod test {
         assert_eq!(
             ascii_hash,
             String::from("1bd088ee9166a062cf4af09cf99720fa6e1a3133")
+        )
+    }
+
+    #[test]
+    fn multi_info_hash() {
+        let fs = "pulpfiction.torrent";
+        let torrent = Torrent::from_file(fs).unwrap();
+        let mut ascii_hash = String::new();
+        _ = torrent
+            .hash
+            .iter()
+            .try_for_each(|x| write!(&mut ascii_hash, "{:x}", *x));
+        assert_eq!(
+            ascii_hash,
+            String::from("3f8f219568b8b229581dddd7bc5a5e889e906a9b")
         )
     }
 }
