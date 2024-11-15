@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::error;
+use crate::sha1::Sha1;
 use bencode;
 use bencode::bencode::BTypes;
+use bencode::bencoen::ser;
 use bencode::error::DecodeError;
 use bencode::utils::decode_option;
 use error::TorrentError;
@@ -16,6 +18,7 @@ pub struct Torrent {
     pub created_by: Option<String>,
     pub encoding: Option<String>,
     pub info: Info,
+    pub hash: [u32; 5],
 }
 
 #[derive(Default, Debug)]
@@ -83,6 +86,7 @@ impl Torrent {
         self.created_by = decode_option(d.get("created by"))?;
         self.encoding = decode_option(d.get("encoding"))?;
         self.de_info_fields(d.get("info"))?;
+        self.info_hash(d.get("info"));
         Ok(())
     }
 
@@ -124,10 +128,20 @@ impl Torrent {
             Err(DecodeError::EOF)
         }
     }
+    pub fn info_hash(&mut self, info: Option<&BTypes>) {
+        if let Some(bt) = info {
+            let parsed = ser(bt);
+            let mut sha = Sha1::new();
+            sha.append_hash(&parsed);
+            self.hash = sha.get_hash();
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use std::fmt::Write;
+
     use crate::torrent::FileMode;
 
     use super::Torrent;
@@ -137,7 +151,6 @@ mod test {
     fn debain() {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
-        println!("{:?}", torrent);
         assert_eq!(
             torrent.announce,
             "http://bttracker.debian.org:6969/announce"
@@ -165,5 +178,20 @@ mod test {
         assert_eq!(torrent.announce, "udp://open.demonii.com:1337");
         assert_eq!(torrent.created_by, Some("uTorrent/2210".to_string()));
         assert_eq!(torrent.creation_date, Some(1332518251));
+    }
+
+    #[test]
+    fn info_hash() {
+        let fs = "debian.torrent";
+        let torrent = Torrent::from_file(fs).unwrap();
+        let mut ascii_hash = String::new();
+        _ = torrent
+            .hash
+            .iter()
+            .try_for_each(|x| write!(&mut ascii_hash, "{:x}", *x));
+        assert_eq!(
+            ascii_hash,
+            String::from("1bd088ee9166a062cf4af09cf99720fa6e1a3133")
+        )
     }
 }
