@@ -5,3 +5,8 @@ edition = "2021"
 
 [dependencies.bencode]
 path = "../bencode"
+
+
+
+[dependencies.uttd]
+path = "../uttd"
