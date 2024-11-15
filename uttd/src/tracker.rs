@@ -15,3 +15,9 @@ pub enum Event {
     Stopped,
     Completed,
 }
+
+impl TrackerParams {
+    fn new(info_hash: [u8; 20]) -> Self {
+        unimplemented!()
+    }
+}
