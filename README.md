@@ -4,6 +4,8 @@
 
 - [x] bencode parser
 - [x] parse .torrent file
+- [x] bencode encoder
+- [x] sha1 info hash
 - [ ] URL Library
 - [ ] HTTP Library
 - [ ] handle magnet links
