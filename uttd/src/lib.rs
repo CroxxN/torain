@@ -2,15 +2,11 @@ mod tracker;
 mod urutil;
 
 use std::{
-    net::{AddrParseError, IpAddr, SocketAddr},
-    str::FromStr,
+    io::{Read, Write},
+    net::{AddrParseError, SocketAddr, TcpStream, ToSocketAddrs},
 };
 
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
-
+#[derive(Debug)]
 pub enum UttdError {
     IpParseFail(AddrParseError),
     IoError(std::io::Error),
@@ -33,16 +29,31 @@ pub struct Url {
 }
 
 impl Url {
-    pub async fn new(address: &str, port: u16) -> Result<Self, UttdError> {
-        let ip = IpAddr::from_str(address)?;
-        let sock_addr = SocketAddr::new(ip, port);
-        let stream = tokio::net::TcpStream::connect(sock_addr).await?;
+    pub fn new(address: &str, port: u16) -> Result<Self, UttdError> {
+        let mut sock_adr = (address, port).to_socket_addrs()?;
+        let ip = sock_adr.next().unwrap();
+        let socket = SocketAddr::from(ip);
+        let stream = TcpStream::connect(socket)?;
         Ok(Url { stream })
     }
-    async fn send(&mut self, data: &[u8]) -> Result<&mut [u8], UttdError> {
-        let mut res: &mut [u8] = &mut [];
-        self.stream.write_all(data).await?;
-        self.stream.read_buf(&mut res).await?;
+    pub fn send(&mut self, data: &[u8]) -> Result<Vec<u8>, UttdError> {
+        let mut res = vec![];
+        self.stream.write_all(data)?;
+        self.stream.read_to_end(&mut res)?;
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::Url;
+
+    // request google with bogus data
+    #[test]
+    fn get() {
+        let mut url = Url::new("google.com", 443).unwrap();
+        let response = url.send(&[0]).unwrap();
+
+        assert_eq!(response, "".to_owned().as_bytes());
     }
 }
