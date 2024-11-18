@@ -53,7 +53,15 @@ impl TrackerParams {
 
     pub fn request(base: &str, map: HashMap<&str, Vec<u8>>) {
         let url = build_url(base, map);
-        url.iter().for_each(|x| print!("{}", *x as char));
+        let request_header = format!(
+            "GET {} HTTP/1.1\r\n
+            Host: {}\r\n
+            Connection: close\r\n
+            User-agent: torain\r\n
+            Accept: */*\r\n
+            ",
+            url
+        );
     }
 }
 

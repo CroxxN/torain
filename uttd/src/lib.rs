@@ -1,5 +1,5 @@
 mod tracker;
-mod urutil;
+pub mod urutil;
 
 use std::{
     io::{Read, Write},
