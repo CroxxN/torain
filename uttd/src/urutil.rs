@@ -15,7 +15,7 @@ fn encode(value: &[u8]) -> String {
     formatted
 }
 
-pub fn build_url(base: &str, params: HashMap<&str, &str>) -> String {
+pub fn build_url(base: &str, params: HashMap<&str, Vec<u8>>) -> String {
     let mut url: String = String::from_str(base).expect("FAILED to create String");
 
     url.push('?');
@@ -23,7 +23,7 @@ pub fn build_url(base: &str, params: HashMap<&str, &str>) -> String {
     for (k, v) in params {
         url.push_str(k);
         url.push('=');
-        url.push_str(&encode(v.as_bytes()));
+        url.push_str(&encode(v.as_slice()));
         url.push('&');
     }
     url.pop();
