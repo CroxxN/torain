@@ -1,30 +1,30 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 // #[allow(unused_variables, dead_code)]
 // use crate::tracker::TrackerParams;
 
-fn encode(value: &[u8]) -> Vec<u8> {
-    let mut formatted = vec![];
+fn encode(value: &[u8]) -> String {
+    let mut formatted = String::new();
 
     value.iter().for_each(|x| match *x {
-        b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'.' | b'-' | b'_' => formatted.push(*x),
+        b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'.' | b'-' | b'_' => formatted.push(*x as char),
 
-        _ => formatted.extend(format!("%{:X}", x).as_bytes()),
+        _ => formatted.push_str(&format!("%{:X}", x)),
     });
 
     formatted
 }
 
-pub fn build_url(base: &str, params: HashMap<&str, Vec<u8>>) -> Vec<u8> {
-    let mut url: Vec<u8> = encode(base.as_bytes()).iter().map(|x| *x).collect();
+pub fn build_url(base: &str, params: HashMap<&str, &str>) -> String {
+    let mut url: String = String::from_str(base).expect("FAILED to create String");
 
-    url.push(b'?');
+    url.push('?');
 
     for (k, v) in params {
-        url.extend(k.as_bytes());
-        url.push(b'=');
-        url.extend(encode(&v));
-        url.push(b'&');
+        url.push_str(k);
+        url.push('=');
+        url.push_str(&encode(v.as_bytes()));
+        url.push('&');
     }
     url.pop();
 
@@ -42,32 +42,29 @@ mod test {
     #[test]
     fn check_valid_ascii() {
         let value = "abc";
-        assert_eq!(value.as_bytes(), &encode(value.as_bytes()));
+        assert_eq!(value, &encode(value.as_bytes()));
     }
 
     #[test]
     fn check_formatted_bytes() {
         let value = "Û";
-        assert_eq!("%C3%9B".as_bytes(), &encode(value.as_bytes()));
+        assert_eq!("%C3%9B", &encode(value.as_bytes()));
     }
     #[test]
     fn check_space() {
         let value = " ";
-        assert_eq!("%20".as_bytes(), &encode(value.as_bytes()));
+        assert_eq!("%20", &encode(value.as_bytes()));
     }
     #[test]
     fn check_url_basic() {
         let value = "https://google.com/";
-        assert_eq!(
-            "https%3A%2F%2Fgoogle.com%2F".as_bytes(),
-            &encode(value.as_bytes())
-        );
+        assert_eq!("https%3A%2F%2Fgoogle.com%2F", &encode(value.as_bytes()));
     }
     #[test]
     fn check_url_params() {
         let value = "https://google.com?cookie=not available";
         assert_eq!(
-            "https%3A%2F%2Fgoogle.com%3Fcookie%3Dnot%20available".as_bytes(),
+            "https%3A%2F%2Fgoogle.com%3Fcookie%3Dnot%20available",
             &encode(value.as_bytes())
         );
     }
@@ -83,9 +80,6 @@ mod test {
         assert_eq!(
             "https%3A%2F%2Fgoogle.com?cookie=not%20available".to_owned(),
             build_url(base, params)
-                .iter()
-                .map(|x| *x as char)
-                .collect::<String>()
         );
     }
 }
