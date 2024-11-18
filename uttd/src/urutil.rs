@@ -15,7 +15,7 @@ fn encode(value: &[u8]) -> Vec<u8> {
     formatted
 }
 
-pub fn build_url(base: &str, params: HashMap<&str, &str>) -> Vec<u8> {
+pub fn build_url(base: &str, params: HashMap<&str, Vec<u8>>) -> Vec<u8> {
     let mut url: Vec<u8> = encode(base.as_bytes()).iter().map(|x| *x).collect();
 
     url.push(b'?');
@@ -23,7 +23,7 @@ pub fn build_url(base: &str, params: HashMap<&str, &str>) -> Vec<u8> {
     for (k, v) in params {
         url.extend(k.as_bytes());
         url.push(b'=');
-        url.extend(encode(v.as_bytes()));
+        url.extend(encode(&v));
         url.push(b'&');
     }
     url.pop();
@@ -79,7 +79,7 @@ mod test {
     fn check_url_param() {
         let base = "https://google.com";
         let mut params = HashMap::new();
-        params.insert("cookie", "not available");
+        params.insert("cookie", "not available".to_owned().into_bytes());
         assert_eq!(
             "https%3A%2F%2Fgoogle.com?cookie=not%20available".to_owned(),
             build_url(base, params)

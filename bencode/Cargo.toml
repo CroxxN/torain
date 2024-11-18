@@ -3,4 +3,5 @@ name = "bencode"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[dependencies.uttd]
+path = "../uttd"

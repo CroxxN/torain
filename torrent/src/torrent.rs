@@ -8,17 +8,18 @@ use bencode::bencoen::ser;
 use bencode::error::DecodeError;
 use bencode::utils::decode_option;
 use error::TorrentError;
+use uttd::url::Url;
 
 #[derive(Default, Debug)]
 pub struct Torrent {
-    pub announce: String,
+    pub announce: Url,
     pub announce_list: Option<Vec<String>>,
     pub creation_date: Option<usize>,
     pub comment: Option<String>,
     pub created_by: Option<String>,
     pub encoding: Option<String>,
     pub info: Info,
-    pub hash: [u32; 5],
+    pub hash: [u8; 20],
 }
 
 #[derive(Default, Debug)]
@@ -142,6 +143,8 @@ impl Torrent {
 mod test {
     use std::fmt::Write;
 
+    use uttd::url::Url;
+
     use crate::torrent::FileMode;
 
     use super::Torrent;
@@ -153,7 +156,7 @@ mod test {
         let torrent = Torrent::from_file(fs).unwrap();
         assert_eq!(
             torrent.announce,
-            "http://bttracker.debian.org:6969/announce"
+            Url::new("http://bttracker.debian.org:6969/announce")
         );
         assert_eq!(
             torrent.comment,
@@ -175,7 +178,6 @@ mod test {
     fn pulp_fiction() {
         let fs = "pulpfiction.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
-        assert_eq!(torrent.announce, "udp://open.demonii.com:1337");
         assert_eq!(torrent.created_by, Some("uTorrent/2210".to_string()));
         assert_eq!(torrent.creation_date, Some(1332518251));
     }

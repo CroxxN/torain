@@ -1,5 +1,5 @@
-mod tracker;
-mod urutil;
+pub mod url;
+pub mod urutil;
 
 use std::{
     io::{Read, Write},
@@ -24,17 +24,17 @@ impl From<std::io::Error> for UttdError {
     }
 }
 
-pub struct Url {
+pub struct Stream {
     stream: TcpStream,
 }
 
-impl Url {
+impl Stream {
     pub fn new(address: &str, port: u16) -> Result<Self, UttdError> {
         let mut sock_adr = (address, port).to_socket_addrs()?;
         let ip = sock_adr.next().unwrap();
         let socket = SocketAddr::from(ip);
         let stream = TcpStream::connect(socket)?;
-        Ok(Url { stream })
+        Ok(Stream { stream })
     }
     pub fn send(&mut self, data: &[u8]) -> Result<Vec<u8>, UttdError> {
         let mut res = vec![];
@@ -46,12 +46,12 @@ impl Url {
 
 #[cfg(test)]
 mod test {
-    use crate::Url;
+    use crate::Stream;
 
     // request google with bogus data
     #[test]
     fn get() {
-        let mut url = Url::new("google.com", 443).unwrap();
+        let mut url = Stream::new("google.com", 443).unwrap();
         let response = url.send(&[0]).unwrap();
 
         assert_eq!(response, "".to_owned().as_bytes());

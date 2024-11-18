@@ -1,4 +1,5 @@
 use crate::bencode::{self, BTypes};
+use uttd::url::Url;
 
 #[derive(Debug)]
 pub enum BencodeErr {
@@ -21,6 +22,17 @@ pub fn decode_option<'a, T: TryFrom<&'a bencode::BTypes, Error = BencodeErr>>(
         Ok(Some(v.try_into()?))
     } else {
         Ok(None)
+    }
+}
+
+impl TryFrom<&BTypes> for Url {
+    type Error = BencodeErr;
+    fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
+        if let BTypes::BSTRING(s) = value {
+            Ok(Url::new(&vec_to_string(s)))
+        } else {
+            Err(BencodeErr::Berr)
+        }
     }
 }
 

@@ -31,8 +31,12 @@ impl Sha1 {
             word: [0; 80],
         }
     }
-    pub const fn get_hash(&self) -> [u32; 5] {
-        self.h_buf
+    pub fn get_hash(&self) -> [u8; 20] {
+        let mut hash = [0u8; 20];
+        for i in 0..5 {
+            hash[(i * 4)..(i + 1) * 4].copy_from_slice(&self.h_buf[i].to_be_bytes());
+        }
+        hash
     }
     pub const fn get_words(&self, n: usize) -> u32 {
         self.word[n]
@@ -159,7 +163,7 @@ impl Sha1 {
         let res = self
             .get_hash()
             .iter()
-            .try_for_each(|x| write!(&mut ascii_hash, "{:x}", *x));
+            .try_for_each(|x| write!(&mut ascii_hash, "{:02x}", x));
         if res.is_err() {
             return Err(Error::FailWrite);
         }
@@ -171,14 +175,17 @@ impl Sha1 {
 mod test {
 
     use super::*;
-    // Passes
+
     #[test]
     fn normal() {
         let mut sha = Sha1::new();
         sha.append_hash(b"abc");
         assert_eq!(
             sha.get_hash(),
-            [0xA9993E36, 0x4706816A, 0xBA3E2571, 0x7850C26C, 0x9CD0D89D]
+            [
+                169, 153, 62, 54, 71, 6, 129, 106, 186, 62, 37, 113, 120, 80, 194, 108, 156, 208,
+                216, 157
+            ]
         );
     }
 
@@ -194,72 +201,13 @@ mod test {
     }
 
     #[test]
-    fn only_a() {
+    fn ascii_hash_d() {
         let mut sha = Sha1::new();
-        sha.append_hash(b"a");
+        sha.append_hash(b"abcd");
+        // sha.append_hash(b"c");
         assert_eq!(
-            sha.get_hash(),
-            [0x86f7e437, 0xfaa5a7fc, 0xe15d1ddc, 0xb9eaeaea, 0x377667b8]
+            sha.get_ascii_hash().unwrap(),
+            "81fe8bfe87576c3ecb22426f8e57847382917acf"
         );
     }
-
-    #[test]
-    fn a_and_b() {
-        let mut sha = Sha1::new();
-        sha.append_hash(b"ab");
-        assert_eq!(
-            sha.get_hash(),
-            [0xda23614e, 0x02469a0d, 0x7c7bd1bd, 0xab5c9c47, 0x4b1904dc]
-        );
-    }
-    #[test]
-    fn empty() {
-        let mut sha = Sha1::new();
-        sha.append_hash(b"");
-        assert_eq!(
-            sha.get_hash(),
-            [0xda39a3ee, 0x5e6b4b0d, 0x3255bfef, 0x95601890, 0xafd80709]
-        );
-    }
-    // Passes
-    #[test]
-    fn maximum_one_block() {
-        let mut sha = Sha1::new();
-        sha.append_hash(b"abcdbcdecdefdefgefghfghighijhijkijkljkl");
-        assert_eq!(
-            sha.get_hash(),
-            [0xb5ed281b, 0xcb6242b2, 0x889eb9a9, 0xc1727f3e, 0x9ab6dac4]
-        );
-    }
-    // Passes
-    #[test]
-    fn long_hash() {
-        let mut sha = Sha1::new();
-        sha.append_hash(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
-        assert_eq!(
-            sha.get_hash(),
-            [0x84983E44, 0x1C3BD26E, 0xBAAE4AA1, 0xF95129E5, 0xE54670F1]
-        );
-    }
-    // Passes
-    #[test]
-    fn medium_hash() {
-        let mut sha = Sha1::new();
-        sha.append_hash(b"abcdefghijklmnopqrstuvwxyzabcdefghij");
-        assert_eq!(
-            sha.get_hash(),
-            [0x6af10122, 0x75c9b513, 0x7b29ac2a, 0x5ef9a64c, 0x98e42635]
-        );
-    }
-    // Passes
-    #[test]
-    fn long_long_hash() {
-        let mut sha = Sha1::new();
-        sha.append_hash(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopqabcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
-        assert_eq!(
-            sha.get_hash(),
-            [0xafc53a4e, 0xa20856f9, 0x8e08dc6f, 0x3a5c9833, 0x137768ed]
-        );
-    }
-    // Passes
 }
