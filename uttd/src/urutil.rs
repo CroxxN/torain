@@ -78,7 +78,7 @@ mod test {
         let mut params = HashMap::new();
         params.insert("cookie", "not available".to_owned().into_bytes());
         assert_eq!(
-            "https%3A%2F%2Fgoogle.com?cookie=not%20available".to_owned(),
+            "https://google.com?cookie=not%20available".to_owned(),
             build_url(base, params)
         );
     }
