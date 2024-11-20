@@ -56,7 +56,7 @@ impl TrackerParams {
         map
     }
 
-    pub fn request(base: &str, map: HashMap<&str, Vec<u8>>) {
+    pub fn announce(base: &str, map: HashMap<&str, Vec<u8>>) {
         let url = build_url(base, map);
         let request_header = format!(
             "GET {} HTTP/1.1\r\n

@@ -1,9 +1,8 @@
 use crate::error::UrlError;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Url<'a> {
-    pub socket: SocketAddr,
+    pub url: &'a str,
     pub scheme: Scheme,
     pub host: &'a str,
     pub location: &'a str,
@@ -29,7 +28,7 @@ impl From<&str> for Scheme {
 impl<'a> Default for Url<'a> {
     fn default() -> Self {
         Self {
-            socket: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
+            url: "127.0.0.1:0",
             scheme: Scheme::UDP,
             host: "127.0.0.1",
             location: "/",
@@ -40,25 +39,19 @@ impl<'a> Default for Url<'a> {
 impl<'a> Url<'a> {
     pub fn new(address: &'a str) -> Result<Self, UrlError> {
         let (scheme, base) = address.split_once(':').ok_or(UrlError::InvalidUrl)?;
-        let (base, port) = base.rsplit_once(':').ok_or(UrlError::InvalidUrl)?;
-        let base = base.strip_prefix("//").ok_or(UrlError::InvalidUrl)?;
+        let mut base = base.strip_prefix("//").ok_or(UrlError::InvalidUrl)?;
+        // let (base, port) = base.rsplit_once(':').ok_or(UrlError::InvalidUrl)?;
 
-        let mut port = port;
         let mut location = "/";
 
-        if let Some((p, loc)) = port.rsplit_once('/') {
-            port = p;
+        if let Some((b, loc)) = base.rsplit_once('/') {
+            base = b;
             location = loc;
         }
-        let port = port.parse::<u16>()?;
-        let socket = (base, port)
-            .to_socket_addrs()
-            .expect("Failed to create socket")
-            .next()
-            .unwrap();
+        println!("{}", base);
 
         Ok(Self {
-            socket,
+            url: base,
             scheme: scheme.into(),
             host: base,
             location,
@@ -66,7 +59,8 @@ impl<'a> Url<'a> {
     }
 
     pub fn port(&self) -> u16 {
-        self.socket.port()
+        let (_, port) = self.url.split_once(':').unwrap();
+        port.parse().unwrap()
     }
 }
 
@@ -87,7 +81,7 @@ mod test {
 
         assert_eq!(
             (port, scheme, host, location),
-            (6969, Scheme::HTTP, "bttracker.debian.org", "announce")
+            (6969, Scheme::HTTP, "bttracker.debian.org:6969", "announce")
         );
     }
 
@@ -102,7 +96,7 @@ mod test {
 
         assert_eq!(
             (port, scheme, host, location),
-            (1337, Scheme::UDP, "open.demonii.com", "/")
+            (1337, Scheme::UDP, "open.demonii.com:1337", "/")
         );
     }
 }
