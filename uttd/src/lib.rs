@@ -37,6 +37,12 @@ pub enum StreamType {
     UDP(UdpSocket),
 }
 
+#[allow(dead_code)]
+struct Udp {
+    socket: UdpSocket,
+    connection_id: u16,
+}
+
 impl<'a> Stream<'a> {
     pub fn new(url: Url<'a>) -> Result<Self, UttdError> {
         let stream = match url.scheme {
@@ -60,7 +66,7 @@ impl<'a> Stream<'a> {
         })
     }
 
-    pub fn initiate_udp(&mut self) -> Result<Vec<u8>, UttdError> {
+    pub fn initiate_udp(&mut self) -> Result<[u8; 16], UttdError> {
         let protocol_id: i64 = 0x41727101980; // Protocol ID
         let action: i32 = 0; // Action: connect
         let transaction_id: i32 = 1; // Random Transaction ID
@@ -70,11 +76,18 @@ impl<'a> Stream<'a> {
         buf.extend_from_slice(&action.to_be_bytes());
         buf.extend_from_slice(&transaction_id.to_be_bytes());
         let res = self.send(&buf)?;
-        Ok(res)
+        // a UDP initiate response is always 16 bytes
+        // https://www.bittorrent.org/beps/bep_0029.html
+        Ok(res[..16].try_into().unwrap())
     }
 
     fn send(&mut self, data: &[u8]) -> Result<Vec<u8>, UttdError> {
-        let mut res = vec![0u8; 16];
+        // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
+        // method for UDP expects an already allocated buffer. Vec::new() just creates a container with lenght 0.
+        // So, we iniliatize a vec with vec![] to initialize a vec with 1024 bytes of space. If any request is larger than that,
+        // the vec accomodates to fill the space.
+
+        let mut res = vec![0u8; 1024];
         // let mut udp_res = [0; 1024];
         match &mut self.stream {
             StreamType::TCP(t) => {
