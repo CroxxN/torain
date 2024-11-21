@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-
 use crate::torrent::{FileMode, Torrent};
+use std::collections::HashMap;
 
 pub struct TrackerParams<'a> {
     pub info_hash: &'a [u8],
@@ -35,10 +34,7 @@ impl From<Event> for &str {
 
 impl<'a> TrackerParams<'a> {
     fn new(torrent: &'a Torrent) -> Self {
-        let pid = std::process::id();
-        let peer_id = format!("--sd--TORAIN---{}", pid).into_bytes()[..20]
-            .try_into()
-            .unwrap();
+        let peer_id = "--sd--TORAIN---01523".as_bytes()[..20].try_into().unwrap();
         let port = [b'6', b'8', b'8', b'1'];
         let left = format!("{}", Self::calculate_left(&torrent))
             .as_bytes()
@@ -71,24 +67,21 @@ impl<'a> TrackerParams<'a> {
         map.insert("info_hash", self.info_hash);
         map.insert("peer_id", self.peer_id.as_slice());
         map.insert("port", self.port.as_slice());
-        map.insert("uploaded", &[b'0']);
-        map.insert("downloaded", &[b'0']);
-        map.insert("left", &[b'0']);
-        map.insert("compact", &[b'0']);
+        map.insert("uploaded", self.uploaded);
+        map.insert("downloaded", self.downloaded);
+        map.insert("left", &self.left);
+        map.insert("compact", self.compact);
 
         let event: &str = self.event.into();
         map.insert("event", event.as_bytes());
         map
     }
-
-    //pub fn announce(&self, params: HashMap<&str, &[u8]>) {
-    //    let url = Url::new().unwrap();
-    //}
 }
 
 #[cfg(test)]
 mod test {
-    use uttd::{urutil::build_url, Stream};
+    use uttd::urutil::build_url;
+    use uttd::Stream;
 
     use super::TrackerParams;
     use crate::torrent::Torrent;
@@ -116,6 +109,7 @@ mod test {
             assert_eq!(left, length);
         }
     }
+
     #[test]
     fn announce() {
         let fs = "debian.torrent";
@@ -123,14 +117,10 @@ mod test {
         let tracker = TrackerParams::new(&torrent);
         let params = &tracker.params();
         let url = &torrent.announce;
-        let path = &url.location;
-
         let mut stream = Stream::new(url).unwrap();
-        let encoded = build_url(path, params);
-        let res = stream.get(encoded).unwrap();
-        assert_eq!(
-            res.iter().map(|x| *x as char).collect::<String>(),
-            "".to_owned()
-        );
+        let path = build_url(&url.location, params);
+        let res = stream.get(&path).unwrap();
+
+        assert_eq!([res[9], res[10], res[11]], [b'2', b'0', b'0']);
     }
 }
