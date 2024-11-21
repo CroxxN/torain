@@ -42,18 +42,18 @@ impl Url {
         let mut base = base.strip_prefix("//").ok_or(UrlError::InvalidUrl)?;
         // let (base, port) = base.rsplit_once(':').ok_or(UrlError::InvalidUrl)?;
 
-        let mut location = "/";
+        let mut location = "/".to_owned();
 
         if let Some((b, loc)) = base.rsplit_once('/') {
             base = b;
-            location = loc;
+            location = format!("/{}", loc);
         }
 
         Ok(Self {
             url: base.to_owned(),
             scheme: scheme.into(),
             host: base.to_owned(),
-            location: location.to_owned(),
+            location,
         })
     }
 
@@ -84,7 +84,7 @@ mod test {
                 6969,
                 Scheme::HTTP,
                 "bttracker.debian.org:6969".to_owned(),
-                "announce".to_owned()
+                "/announce".to_owned()
             )
         );
     }

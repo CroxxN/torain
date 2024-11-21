@@ -37,18 +37,19 @@ pub enum StreamType {
     UDP(Udp),
 }
 
+#[allow(dead_code)]
 pub struct Udp {
     socket: UdpSocket,
     connection_id: u64,
 }
 
 impl Stream {
-    pub fn new(url: Url) -> Result<Self, UttdError> {
+    pub fn new(url: &Url) -> Result<Self, UttdError> {
         let stream = match url.scheme {
-            Scheme::HTTP => StreamType::TCP(TcpStream::connect(url.url).unwrap()),
+            Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.url).unwrap()),
             Scheme::UDP => {
                 let mut sock = UdpSocket::bind("0.0.0.0:0").unwrap();
-                sock.connect(url.url).unwrap();
+                sock.connect(&url.url).unwrap();
                 let connection_id = Self::initiate_udp(&mut sock)?;
                 StreamType::UDP(Udp {
                     socket: sock,
@@ -59,7 +60,7 @@ impl Stream {
         };
         Ok(Stream {
             stream,
-            host: url.host,
+            host: url.host.clone(),
         })
     }
 
@@ -111,15 +112,11 @@ impl Stream {
         Ok(())
     }
 
-    pub fn get(&mut self, path: String) -> Result<Vec<u8>, UttdError> {
+    pub fn get(&mut self, path: &str) -> Result<Vec<u8>, UttdError> {
+        let (host, _) = self.host.split_once(':').unwrap();
         let get_header = format!(
-            "GET {} HTTP/1.1\r\n
-            Host: {}\r\n
-            Connection: close\r\n
-            User-agent: torain\r\n
-            Accept: */*\r\n
-        ",
-            path, self.host
+            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+            path, host
         );
         let mut res = vec![];
         self.send(get_header.as_bytes(), &mut res)?;
@@ -130,7 +127,10 @@ impl Stream {
 #[cfg(test)]
 mod test {
     use crate::{url::Url, Stream, StreamType};
-    use std::net::UdpSocket;
+    use std::{
+        io::{Read, Write},
+        net::{TcpStream, UdpSocket},
+    };
 
     // request google with bogus data
 
@@ -138,8 +138,8 @@ mod test {
     fn http_get_request() {
         let url = Url::new("http://bttracker.debian.org:6969/announce").unwrap();
         println!("{}", url.url);
-        let mut stream = Stream::new(url).unwrap();
-        let response = stream.get("/".to_owned()).unwrap();
+        let mut stream = Stream::new(&url).unwrap();
+        let response = stream.get("/").unwrap();
 
         assert!(!response.is_empty());
     }
@@ -147,7 +147,7 @@ mod test {
     #[test]
     fn udp_get_request() {
         let url = Url::new("udp://tracker.opentrackr.org:1337").unwrap();
-        let stream = Stream::new(url).unwrap();
+        let stream = Stream::new(&url).unwrap();
         let mut res = 0;
         if let StreamType::UDP(u) = stream.stream {
             res = u.connection_id;
@@ -182,5 +182,15 @@ mod test {
         let mut buf = [0; 16];
         stream.recv(&mut buf).unwrap();
         assert_eq!(buf.len(), 16);
+    }
+
+    #[test]
+    fn get_request() {
+        let request = "GET /announce?uploaded=0&info_hash=%1b%d0%88%ee%91%66%a0%62%cf%4a%f0%9c%f9%97%20%fa%6e%1a%31%33&port=6881&peer_id=--sd--TORAIN---01523&compact=0&left=661651456&event=started&downloaded=0 HTTP/1.1\r\nHost: bttracker.debian.org\r\nConnection: close\r\n\r\n";
+        let mut tcp = TcpStream::connect("bttracker.debian.org:6969").unwrap();
+        tcp.write_all(request.as_bytes()).unwrap();
+        let mut res = vec![];
+        tcp.read_to_end(&mut res).unwrap();
+        assert_eq!([res[9], res[10], res[11]], [b'2', b'0', b'0']);
     }
 }
