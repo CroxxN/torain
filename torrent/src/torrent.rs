@@ -156,7 +156,7 @@ mod test {
         let torrent = Torrent::from_file(fs).unwrap();
         assert_eq!(
             torrent.announce,
-            Url::new("http://bttracker.debian.org:6969/announce")
+            Url::new("http://bttracker.debian.org:6969/announce").unwrap()
         );
         assert_eq!(
             torrent.comment,

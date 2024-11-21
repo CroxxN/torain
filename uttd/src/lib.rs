@@ -27,46 +27,43 @@ impl From<std::io::Error> for UttdError {
     }
 }
 
-pub struct Stream<'a> {
+pub struct Stream {
     stream: StreamType,
-    host: &'a str,
+    host: String,
 }
 
 pub enum StreamType {
     TCP(TcpStream),
-    UDP(UdpSocket),
+    UDP(Udp),
 }
 
-#[allow(dead_code)]
-struct Udp {
+pub struct Udp {
     socket: UdpSocket,
-    connection_id: u16,
+    connection_id: u64,
 }
 
-impl<'a> Stream<'a> {
-    pub fn new(url: Url<'a>) -> Result<Self, UttdError> {
+impl Stream {
+    pub fn new(url: Url) -> Result<Self, UttdError> {
         let stream = match url.scheme {
             Scheme::HTTP => StreamType::TCP(TcpStream::connect(url.url).unwrap()),
             Scheme::UDP => {
-                println!("{}", url.url);
-                let sock = UdpSocket::bind("0.0.0.0:0").unwrap();
-                // sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                // sock.set_write_timeout(Some(Duration::from_secs(5)))
-                //     .unwrap();
+                let mut sock = UdpSocket::bind("0.0.0.0:0").unwrap();
                 sock.connect(url.url).unwrap();
-                // sock.
-                StreamType::UDP(sock)
+                let connection_id = Self::initiate_udp(&mut sock)?;
+                StreamType::UDP(Udp {
+                    socket: sock,
+                    connection_id,
+                })
             }
             _ => unimplemented!(),
         };
-        // let stream = TcpStream::connect(socket)?;
         Ok(Stream {
             stream,
             host: url.host,
         })
     }
 
-    pub fn initiate_udp(&mut self) -> Result<[u8; 16], UttdError> {
+    pub fn initiate_udp(stream: &mut UdpSocket) -> Result<u64, UttdError> {
         let protocol_id: i64 = 0x41727101980; // Protocol ID
         let action: i32 = 0; // Action: connect
         let transaction_id: i32 = 1; // Random Transaction ID
@@ -75,35 +72,45 @@ impl<'a> Stream<'a> {
         buf.extend_from_slice(&protocol_id.to_be_bytes());
         buf.extend_from_slice(&action.to_be_bytes());
         buf.extend_from_slice(&transaction_id.to_be_bytes());
-        let res = self.send(&buf)?;
+        let mut res = vec![0; 16];
+        Self::send_udp(stream, &buf, &mut res)?;
         // a UDP initiate response is always 16 bytes
         // https://www.bittorrent.org/beps/bep_0029.html
-        Ok(res[..16].try_into().unwrap())
+        let connection_id = u64::from_be_bytes(res[8..16].try_into().unwrap());
+        Ok(connection_id)
     }
 
-    fn send(&mut self, data: &[u8]) -> Result<Vec<u8>, UttdError> {
+    fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
         // method for UDP expects an already allocated buffer. Vec::new() just creates a container with lenght 0.
         // So, we iniliatize a vec with vec![] to initialize a vec with 1024 bytes of space. If any request is larger than that,
         // the vec accomodates to fill the space.
 
-        let mut res = vec![0u8; 1024];
+        // let mut res = vec![0u8; 1024];
         // let mut udp_res = [0; 1024];
         match &mut self.stream {
             StreamType::TCP(t) => {
-                t.write_all(data)?;
-                t.read_to_end(&mut res)?;
+                Self::send_tcp(t, data, res)?;
             }
             StreamType::UDP(t) => {
-                if let Err(e) = t.send(data) {
-                    println!("{}", e);
-                }
-                t.recv(&mut res).unwrap();
-                // t.recv(&mut res)?;
+                Self::send_udp(&mut t.socket, data, res)?;
             }
         }
-        Ok(res.to_vec())
+        Ok(())
     }
+
+    fn send_tcp(stream: &mut TcpStream, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
+        stream.write_all(data)?;
+        stream.read_to_end(res)?;
+        Ok(())
+    }
+
+    fn send_udp(stream: &mut UdpSocket, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
+        stream.send(data)?;
+        stream.recv(res)?;
+        Ok(())
+    }
+
     pub fn get(&mut self, path: String) -> Result<Vec<u8>, UttdError> {
         let get_header = format!(
             "GET {} HTTP/1.1\r\n
@@ -114,14 +121,15 @@ impl<'a> Stream<'a> {
         ",
             path, self.host
         );
-        let res = self.send(get_header.as_bytes())?;
+        let mut res = vec![];
+        self.send(get_header.as_bytes(), &mut res)?;
         Ok(res)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{url::Url, Stream};
+    use crate::{url::Url, Stream, StreamType};
     use std::net::UdpSocket;
 
     // request google with bogus data
@@ -139,15 +147,13 @@ mod test {
     #[test]
     fn udp_get_request() {
         let url = Url::new("udp://tracker.opentrackr.org:1337").unwrap();
-        let mut stream = Stream::new(url).unwrap();
-        let res = stream.initiate_udp().unwrap();
-        // let response = stream.get("/".to_owned()).unwrap();
+        let stream = Stream::new(url).unwrap();
+        let mut res = 0;
+        if let StreamType::UDP(u) = stream.stream {
+            res = u.connection_id;
+        }
 
-        // assert_eq!(
-        //     response.iter().map(|x| *x as char).collect::<String>(),
-        //     "".to_owned()
-        // );
-        assert!(!res.is_empty());
+        assert!(res != 0);
     }
     #[test]
     fn raw_udp() {

@@ -1,11 +1,11 @@
 use crate::error::UrlError;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct Url<'a> {
-    pub url: &'a str,
+pub struct Url {
+    pub url: String,
     pub scheme: Scheme,
-    pub host: &'a str,
-    pub location: &'a str,
+    pub host: String,
+    pub location: String,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -25,19 +25,19 @@ impl From<&str> for Scheme {
     }
 }
 
-impl<'a> Default for Url<'a> {
+impl Default for Url {
     fn default() -> Self {
         Self {
-            url: "127.0.0.1:0",
+            url: "127.0.0.1:0".to_owned(),
             scheme: Scheme::UDP,
-            host: "127.0.0.1",
-            location: "/",
+            host: "127.0.0.1".to_owned(),
+            location: "/".to_owned(),
         }
     }
 }
 
-impl<'a> Url<'a> {
-    pub fn new(address: &'a str) -> Result<Self, UrlError> {
+impl Url {
+    pub fn new(address: &str) -> Result<Self, UrlError> {
         let (scheme, base) = address.split_once(':').ok_or(UrlError::InvalidUrl)?;
         let mut base = base.strip_prefix("//").ok_or(UrlError::InvalidUrl)?;
         // let (base, port) = base.rsplit_once(':').ok_or(UrlError::InvalidUrl)?;
@@ -48,13 +48,12 @@ impl<'a> Url<'a> {
             base = b;
             location = loc;
         }
-        println!("{}", base);
 
         Ok(Self {
-            url: base,
+            url: base.to_owned(),
             scheme: scheme.into(),
-            host: base,
-            location,
+            host: base.to_owned(),
+            location: location.to_owned(),
         })
     }
 
@@ -81,7 +80,12 @@ mod test {
 
         assert_eq!(
             (port, scheme, host, location),
-            (6969, Scheme::HTTP, "bttracker.debian.org:6969", "announce")
+            (
+                6969,
+                Scheme::HTTP,
+                "bttracker.debian.org:6969".to_owned(),
+                "announce".to_owned()
+            )
         );
     }
 
@@ -96,7 +100,12 @@ mod test {
 
         assert_eq!(
             (port, scheme, host, location),
-            (1337, Scheme::UDP, "open.demonii.com:1337", "/")
+            (
+                1337,
+                Scheme::UDP,
+                "open.demonii.com:1337".to_owned(),
+                "/".to_owned()
+            )
         );
     }
 }

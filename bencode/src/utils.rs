@@ -1,9 +1,10 @@
 use crate::bencode::{self, BTypes};
-use uttd::url::Url;
+use uttd::{error::UrlError, url::Url};
 
 #[derive(Debug)]
 pub enum BencodeErr {
     Berr,
+    InvalidUrl,
 }
 
 pub fn bcode_to_u8(bcode: &str) -> impl Iterator<Item = u8> + '_ {
@@ -25,11 +26,18 @@ pub fn decode_option<'a, T: TryFrom<&'a bencode::BTypes, Error = BencodeErr>>(
     }
 }
 
+impl From<UrlError> for BencodeErr {
+    fn from(_: UrlError) -> Self {
+        Self::InvalidUrl
+    }
+}
+
 impl TryFrom<&BTypes> for Url {
     type Error = BencodeErr;
     fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
         if let BTypes::BSTRING(s) = value {
-            Ok(Url::new(&vec_to_string(s)))
+            let p = vec_to_string(s);
+            Ok(Url::new(&p)?)
         } else {
             Err(BencodeErr::Berr)
         }

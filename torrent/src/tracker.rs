@@ -56,7 +56,7 @@ impl TrackerParams {
         map
     }
 
-    pub fn announce(base: &str, map: HashMap<&str, Vec<u8>>) {
+    pub fn announce(base: &str, host: &str, map: HashMap<&str, Vec<u8>>) {
         let url = build_url(base, map);
         let request_header = format!(
             "GET {} HTTP/1.1\r\n
@@ -65,7 +65,7 @@ impl TrackerParams {
             User-agent: torain\r\n
             Accept: */*\r\n
             ",
-            url
+            url, host
         );
     }
 }
