@@ -10,7 +10,7 @@ use bencode::utils::decode_option;
 use error::TorrentError;
 use uttd::url::Url;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Torrent {
     pub announce: Url,
     pub announce_list: Option<Vec<String>>,
@@ -22,7 +22,7 @@ pub struct Torrent {
     pub hash: [u8; 20],
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Info {
     pub name: String,
     pub piece_length: usize,
@@ -30,7 +30,7 @@ pub struct Info {
     pub mode: FileMode,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FileMode {
     SingleMode { length: usize },
     MultiMode { files: Vec<Files> },
@@ -42,7 +42,7 @@ impl Default for FileMode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Files {
     pub length: usize,
     pub path: Vec<String>,

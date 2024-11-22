@@ -37,6 +37,14 @@ impl Default for Url {
 }
 
 impl Url {
+    /// Create a new 'Url' from a base address
+    /// The `address` must be in the form "<scheme://address:port/{path...}>"
+
+    /// ```
+    /// use uttd::url::Url;
+    /// let url = Url::new("http://google.com:80/some_page").unwrap();
+    /// ```
+
     pub fn new(address: &str) -> Result<Self, UrlError> {
         let (scheme, base) = address.split_once(':').ok_or(UrlError::InvalidUrl)?;
         let mut base = base.strip_prefix("//").ok_or(UrlError::InvalidUrl)?;
@@ -56,6 +64,13 @@ impl Url {
             location,
         })
     }
+
+    /// Get the port associated with the remote address
+    /// ```
+    /// use uttd::url::Url;
+    /// let url = Url::new("http://google.com:80/some_page").unwrap();
+    /// assert_eq!(80, url.port());
+    /// ```
 
     pub fn port(&self) -> u16 {
         let (_, port) = self.url.split_once(':').unwrap();

@@ -5,6 +5,7 @@ pub mod urutil;
 use std::{
     io::{Read, Write},
     net::{AddrParseError, TcpStream, UdpSocket},
+    time::Duration,
 };
 
 use url::{Scheme, Url};
@@ -13,6 +14,7 @@ use url::{Scheme, Url};
 pub enum UttdError {
     IpParseFail(AddrParseError),
     IoError(std::io::Error),
+    FailedRequest,
 }
 
 impl From<AddrParseError> for UttdError {
@@ -28,7 +30,7 @@ impl From<std::io::Error> for UttdError {
 }
 
 pub struct Stream {
-    stream: StreamType,
+    pub stream: StreamType,
     host: String,
 }
 
@@ -40,15 +42,28 @@ pub enum StreamType {
 #[allow(dead_code)]
 pub struct Udp {
     socket: UdpSocket,
-    connection_id: u64,
+    pub connection_id: u64,
 }
 
 impl Stream {
+    /// Create a new Tcp or Udp stream on a Url
+    /// The type of stream is based on the scheme in the url
+
+    /// ```
+    /// use uttd::url::Url;
+    /// use uttd::Stream;
+    /// let url = Url::new("http://google.com:80/some_page").unwrap();
+    /// let mut request = Stream::new(&url).unwrap();
+    /// let res = request.get("/").unwrap();
+    /// assert!(!res.is_empty());
+    /// ```
     pub fn new(url: &Url) -> Result<Self, UttdError> {
         let stream = match url.scheme {
             Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.url).unwrap()),
             Scheme::UDP => {
                 let mut sock = UdpSocket::bind("0.0.0.0:0").unwrap();
+                sock.set_read_timeout(Some(Duration::from_secs(5)))?;
+                sock.set_write_timeout(Some(Duration::from_secs(5)))?;
                 sock.connect(&url.url).unwrap();
                 let connection_id = Self::initiate_udp(&mut sock)?;
                 StreamType::UDP(Udp {
@@ -81,7 +96,7 @@ impl Stream {
         Ok(connection_id)
     }
 
-    fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
+    pub fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
         // method for UDP expects an already allocated buffer. Vec::new() just creates a container with lenght 0.
         // So, we iniliatize a vec with vec![] to initialize a vec with 1024 bytes of space. If any request is larger than that,
@@ -107,10 +122,37 @@ impl Stream {
     }
 
     fn send_udp(stream: &mut UdpSocket, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
-        stream.send(data)?;
-        stream.recv(res)?;
+        // if timeout, retry for 10 times
+        for _ in 0..10 {
+            if let Ok(_) = stream.send(data) {
+                break;
+            }
+        }
+        for _ in 0..10 {
+            if let Ok(_) = stream.recv(res) {
+                break;
+            }
+        }
+        // if after 10 tires still no response, return error
+        if res.is_empty() {
+            return Err(UttdError::FailedRequest);
+        }
+
         Ok(())
     }
+
+    /// Perform a get request on this stream
+    /// `path` referes to the location of the url + any params
+    /// For example: google.com:80/{path}?param=value
+
+    /// ```
+    /// use uttd::url::Url;
+    /// use uttd::Stream;
+    /// let url = Url::new("http://google.com:80/some_page").unwrap();
+    /// let mut request = Stream::new(&url).unwrap();
+    /// let res = request.get("/").unwrap();
+    /// assert!(!res.is_empty());
+    /// ```
 
     pub fn get(&mut self, path: &str) -> Result<Vec<u8>, UttdError> {
         let (host, _) = self.host.split_once(':').unwrap();
