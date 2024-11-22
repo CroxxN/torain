@@ -42,7 +42,7 @@ pub enum StreamType {
 #[allow(dead_code)]
 pub struct Udp {
     socket: UdpSocket,
-    pub connection_id: u64,
+    pub connection_id: i64,
 }
 
 impl Stream {
@@ -79,7 +79,7 @@ impl Stream {
         })
     }
 
-    pub fn initiate_udp(stream: &mut UdpSocket) -> Result<u64, UttdError> {
+    pub fn initiate_udp(stream: &mut UdpSocket) -> Result<i64, UttdError> {
         let protocol_id: i64 = 0x41727101980; // Protocol ID
         let action: i32 = 0; // Action: connect
         let transaction_id: i32 = 1; // Random Transaction ID
@@ -92,7 +92,7 @@ impl Stream {
         Self::send_udp(stream, &buf, &mut res)?;
         // a UDP initiate response is always 16 bytes
         // https://www.bittorrent.org/beps/bep_0029.html
-        let connection_id = u64::from_be_bytes(res[8..16].try_into().unwrap());
+        let connection_id = i64::from_be_bytes(res[8..16].try_into().unwrap());
         Ok(connection_id)
     }
 
@@ -122,13 +122,9 @@ impl Stream {
     }
 
     fn send_udp(stream: &mut UdpSocket, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
-        // if timeout, retry for 10 times
-        for _ in 0..10 {
-            if let Ok(_) = stream.send(data) {
-                break;
-            }
-        }
-        for _ in 0..10 {
+        // if timeout, retry for 5 times
+        for _ in 0..5 {
+            stream.send(data).unwrap();
             if let Ok(_) = stream.recv(res) {
                 break;
             }

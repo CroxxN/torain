@@ -126,30 +126,35 @@ impl<'a> TrackerParams<'a> {
 
         request_body.extend_from_slice(&connection_id.to_be_bytes()); // connection_id
         request_body.extend_from_slice(&1_u32.to_be_bytes()); // action
-        request_body.extend_from_slice(&0_u32.to_be_bytes()); // transaction_id
+        request_body.extend_from_slice(&1_u32.to_be_bytes()); // transaction_id
         request_body.extend_from_slice(&self.info_hash); // info_hash
         request_body.extend_from_slice(&self.peer_id); // peer_id
         request_body.extend_from_slice(&0_u64.to_be_bytes()); // downloaded
         request_body.extend_from_slice(&self.left.to_be_bytes()); // left
         request_body.extend_from_slice(&self.uploaded.to_be_bytes()); // uploaded
         request_body.extend_from_slice(&2_u32.to_be_bytes()); // event
-        request_body.extend_from_slice(&0x1A2B3C4D_u32.to_be_bytes()); // key
+        request_body.extend_from_slice(&0_u32.to_be_bytes()); // ip address
+        request_body.extend_from_slice(&1_u32.to_be_bytes()); // key
+        request_body.extend_from_slice(&(-1_i32).to_be_bytes()); // num_want
         request_body.extend_from_slice(&self.port.to_be_bytes()); // port
+
+        assert!(request_body.len() == 98);
 
         let mut res = vec![0; 1024];
         stream.send(&request_body, &mut res).unwrap();
 
-        println!("{:?}", res);
-        let mut body = parse_response(uttd::url::Scheme::UDP, &mut res)
-            .unwrap()
-            .to_vec()
-            .into_iter();
-        let decoded_body = bencode::decode(&mut body).unwrap();
-        if let BTypes::DICT(d) = decoded_body {
-            return Ok(d);
-        } else {
-            Err(BencodeErr::Berr)
-        }
+        // let mut body = parse_response(uttd::url::Scheme::UDP, &mut res)
+        //     .unwrap()
+        //     .to_vec()
+        //     .into_iter();
+        // let decoded_body = bencode::decode(&mut body).unwrap();
+        // if let BTypes::DICT(d) = decoded_body {
+        //     return Ok(d);
+        // } else {
+        //     Err(BencodeErr::Berr)
+        // }
+
+        Ok(BTreeMap::new())
     }
 }
 

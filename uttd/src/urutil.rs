@@ -47,9 +47,11 @@ pub fn parse_response(scheme: Scheme, res: &mut Vec<u8>) -> Result<&mut [u8], Ut
 }
 
 pub fn parse_response_udp(res: &mut Vec<u8>) -> Result<&mut [u8], UttdError> {
-    let response = res.iter().map(|x| *x as char).collect::<String>();
+    let (head, response) = res.split_at_mut(20);
+    let interval = i32::from_be_bytes(head[8..12].try_into().unwrap());
+    let seeders = i32::from_be_bytes(head[12..16].try_into().unwrap());
+    let leachers = i32::from_be_bytes(head[16..20].try_into().unwrap());
 
-    println!("{}", response);
     Err(UttdError::FailedRequest)
 }
 
