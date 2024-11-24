@@ -3,12 +3,14 @@
 use ::bencode::bencode::BTypes;
 use ::bencode::utils::BencodeErr;
 use bencode::bencode;
-use uttd::urutil::{build_url, parse_response};
+use uttd::urutil::{build_url, response_body};
 use uttd::StreamType;
 use uttd::{url::Url, Stream};
 
 use crate::torrent::{FileMode, Torrent};
 use std::collections::{BTreeMap, HashMap};
+use std::net::SocketAddr;
+use std::str::FromStr;
 
 pub struct TrackerParams<'a> {
     pub url: Url,
@@ -100,7 +102,7 @@ impl<'a> TrackerParams<'a> {
         let path = build_url(&url.location, params);
         let mut stream = Stream::new(url).unwrap();
         let mut res = stream.get(&path).unwrap();
-        let mut body = parse_response(uttd::url::Scheme::HTTP, &mut res)
+        let mut body = response_body(uttd::url::Scheme::HTTP, &mut res)
             .unwrap()
             .to_vec()
             .into_iter();
@@ -156,12 +158,47 @@ impl<'a> TrackerParams<'a> {
 
         Ok(BTreeMap::new())
     }
+    pub fn compact_ip_mode(bytes: &[u8]) -> Vec<SocketAddr> {
+        let mut ips = Vec::new();
+        let len = bytes.len();
+        let mut cursor = 0;
+
+        while cursor < len {
+            let ip: [u8; 4] = bytes[cursor..cursor + 4].try_into().unwrap();
+            let port = u16::from_be_bytes(bytes[cursor + 4..cursor + 6].try_into().unwrap());
+            let socket = SocketAddr::from((ip, port));
+            ips.push(socket);
+            cursor += 6;
+        }
+        ips
+    }
+
+    fn bencoded_ip_mode(bytes: Vec<u8>) -> Vec<SocketAddr> {
+        let mut ips = Vec::new();
+
+        let decoded_body = bencode::decode(&mut bytes.into_iter()).unwrap();
+        if let BTypes::DICT(d) = decoded_body {
+            let peers = d.get("peers").unwrap();
+            if let BTypes::LIST(l) = peers {
+                l.iter().for_each(|peers| {
+                    if let BTypes::DICT(peer_list) = peers {
+                        let ip: String = peer_list.get("ip").unwrap().try_into().unwrap();
+                        let port: usize = peer_list.get("port").unwrap().try_into().unwrap();
+                        ips.push(
+                            SocketAddr::from_str(format!("{}:{}", ip, port).as_str()).unwrap(),
+                        );
+                    };
+                });
+            };
+        };
+        ips
+    }
 }
 
 #[cfg(test)]
 mod test {
 
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, net::SocketAddr};
 
     use super::TrackerParams;
     use crate::torrent::Torrent;
@@ -204,5 +241,14 @@ mod test {
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
         assert_eq!(tracker.announce().unwrap(), BTreeMap::new());
+    }
+    #[test]
+    fn parse_ip() {
+        let ip = &[127, 0, 0, 1, 31, 144, 0, 0, 0, 0, 0, 0];
+        let mut expected = vec![SocketAddr::from(([127, 0, 0, 1], 8080))];
+        expected.push(SocketAddr::from(([0, 0, 0, 0], 0)));
+
+        let ips = TrackerParams::compact_ip_mode(ip);
+        assert_eq!(ips, expected);
     }
 }

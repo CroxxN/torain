@@ -167,7 +167,7 @@ mod test {
     use crate::{url::Url, Stream, StreamType};
     use std::{
         io::{Read, Write},
-        net::{TcpStream, UdpSocket},
+        net::TcpStream,
     };
 
     // request google with bogus data
@@ -192,34 +192,6 @@ mod test {
         }
 
         assert!(res != 0);
-    }
-    #[test]
-    fn raw_udp() {
-        let stream = UdpSocket::bind("0.0.0.0:0").unwrap();
-        let udp_sock = "1.1.1.1:53";
-        let message = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03\x77\x77\x77\x06\x67\x6f\x6f\x67\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00\x01";
-        stream.send_to(message, udp_sock).unwrap();
-        let mut buf = [0; 1024];
-        let (l, _) = stream.recv_from(&mut buf).unwrap();
-        assert_eq!(l, 48);
-    }
-    #[test]
-    fn raw_udp_tracker() {
-        let stream = UdpSocket::bind("0.0.0.0:0").unwrap();
-        let protocol_id: i64 = 0x41727101980; // Protocol ID
-        let action: i32 = 0; // Action: connect
-        let transaction_id: i32 = 1; // Random Transaction ID
-
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&protocol_id.to_be_bytes());
-        buf.extend_from_slice(&action.to_be_bytes());
-        buf.extend_from_slice(&transaction_id.to_be_bytes());
-        stream.connect("open.demonii.com:1337").unwrap();
-
-        stream.send(&buf).unwrap();
-        let mut buf = [0; 16];
-        stream.recv(&mut buf).unwrap();
-        assert_eq!(buf.len(), 16);
     }
 
     #[test]
