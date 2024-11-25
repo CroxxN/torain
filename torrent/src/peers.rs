@@ -19,4 +19,5 @@ impl Peers {
             peer: ip,
         }
     }
+    pub fn handshake(&self, info_hash: &[u8]) {}
 }
