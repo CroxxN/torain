@@ -1,25 +1,22 @@
 #![allow(dead_code)]
 
-use std::net::Ipv4Addr;
+use std::net::SocketAddr;
 
 #[derive(Debug)]
 pub struct Peers {
-    interval: u32,
-    seeders: u32,
-    leechers: u32,
-    peer: Vec<Ipv4Addr>,
+    pub interval: i32,
+    pub seeders: i32,
+    pub leechers: i32,
+    pub peer: Vec<SocketAddr>,
 }
 
 impl Peers {
-    fn new(interval: u32, seeders: u32, leechers: u32, ip: Ipv4Addr) -> Self {
+    pub fn new(interval: i32, seeders: i32, leechers: i32, ip: Vec<SocketAddr>) -> Self {
         Self {
             interval,
             seeders,
             leechers,
-            peer: vec![ip],
+            peer: ip,
         }
-    }
-    fn add_ip(&mut self, ip: Ipv4Addr) {
-        self.peer.push(ip)
     }
 }

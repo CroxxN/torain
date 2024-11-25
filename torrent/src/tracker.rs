@@ -3,12 +3,14 @@
 use ::bencode::bencode::BTypes;
 use ::bencode::utils::BencodeErr;
 use bencode::bencode;
-use uttd::urutil::{build_url, response_body};
+use uttd::urutil::{build_url, response};
 use uttd::StreamType;
 use uttd::{url::Url, Stream};
 
+use crate::peers::Peers;
 use crate::torrent::{FileMode, Torrent};
-use std::collections::{BTreeMap, HashMap};
+use core::panic;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::str::FromStr;
 
@@ -55,7 +57,7 @@ impl<'a> TrackerParams<'a> {
             uploaded: 0,
             downloaded: 0,
             left,
-            compact: &[b'0'],
+            compact: &[b'1'],
             event: Event::Started,
             trackerid: None,
         }
@@ -89,32 +91,29 @@ impl<'a> TrackerParams<'a> {
         map.insert("event", event.as_bytes().to_vec());
         map
     }
-    pub fn announce(&self) -> Result<BTreeMap<String, BTypes>, BencodeErr> {
+    pub fn announce(&self) -> Result<Peers, BencodeErr> {
         match self.url.scheme {
             uttd::url::Scheme::UDP => self.announce_udp(),
             _ => self.announce_tcp(),
         }
     }
 
-    fn announce_tcp(&self) -> Result<BTreeMap<String, BTypes>, BencodeErr> {
+    fn announce_tcp(&self) -> Result<Peers, BencodeErr> {
         let params = &self.params();
         let url = &self.url;
         let path = build_url(&url.location, params);
         let mut stream = Stream::new(url).unwrap();
         let mut res = stream.get(&path).unwrap();
-        let mut body = response_body(uttd::url::Scheme::HTTP, &mut res)
-            .unwrap()
-            .to_vec()
-            .into_iter();
-        let decoded_body = bencode::decode(&mut body).unwrap();
-        if let BTypes::DICT(d) = decoded_body {
-            return Ok(d);
-        } else {
-            Err(BencodeErr::Berr)
-        }
-        // assert_eq!([res[9], res[10], res[11]], [b'2', b'0', b'0']);
+        let response = response(uttd::url::Scheme::HTTP, &mut res).unwrap();
+        let body = response.1.to_vec();
+        let (interval, sock) = Self::bencoded_ip_mode(body);
+
+        let peers = Peers::new(interval as i32, 0, 0, sock);
+
+        Ok(peers)
+        // response.interval = interval;
     }
-    fn announce_udp(&self) -> Result<BTreeMap<String, BTypes>, BencodeErr> {
+    fn announce_udp(&self) -> Result<Peers, BencodeErr> {
         let mut request_body: Vec<u8> = Vec::new();
 
         let url = &self.url;
@@ -145,39 +144,38 @@ impl<'a> TrackerParams<'a> {
         let mut res = vec![0; 1024];
         stream.send(&request_body, &mut res).unwrap();
 
-        // let mut body = parse_response(uttd::url::Scheme::UDP, &mut res)
-        //     .unwrap()
-        //     .to_vec()
-        //     .into_iter();
-        // let decoded_body = bencode::decode(&mut body).unwrap();
-        // if let BTypes::DICT(d) = decoded_body {
-        //     return Ok(d);
-        // } else {
-        //     Err(BencodeErr::Berr)
-        // }
+        let (info, body) = response(uttd::url::Scheme::UDP, &mut res).unwrap();
+        let body = body.to_vec();
+        let res = Self::compact_ip_mode(body.as_slice());
 
-        Ok(BTreeMap::new())
+        let peers = Peers::new(info.interval, info.seeders, info.leechers, res);
+
+        Ok(peers)
     }
-    pub fn compact_ip_mode(bytes: &[u8]) -> Vec<SocketAddr> {
-        let mut ips = Vec::new();
-        let len = bytes.len();
-        let mut cursor = 0;
 
-        while cursor < len {
-            let ip: [u8; 4] = bytes[cursor..cursor + 4].try_into().unwrap();
-            let port = u16::from_be_bytes(bytes[cursor + 4..cursor + 6].try_into().unwrap());
-            let socket = SocketAddr::from((ip, port));
-            ips.push(socket);
-            cursor += 6;
-        }
+    pub fn compact_ip_mode(bytes: &[u8]) -> Vec<SocketAddr> {
+        let ips: Vec<SocketAddr> = bytes
+            .chunks(6)
+            .map(|x| {
+                let ip: [u8; 4] = x[0..4].try_into().unwrap();
+                let port = u16::from_be_bytes(x[4..6].try_into().unwrap());
+                SocketAddr::from((ip, port))
+            })
+            .collect();
+
         ips
     }
 
-    fn bencoded_ip_mode(bytes: Vec<u8>) -> Vec<SocketAddr> {
+    fn bencoded_ip_mode(bytes: Vec<u8>) -> (usize, Vec<SocketAddr>) {
         let mut ips = Vec::new();
+        let mut interval = 0;
 
         let decoded_body = bencode::decode(&mut bytes.into_iter()).unwrap();
         if let BTypes::DICT(d) = decoded_body {
+            if let Some(_) = d.get("failure") {
+                panic!("FAILED");
+            }
+            interval = d.get("interval").unwrap().try_into().unwrap();
             let peers = d.get("peers").unwrap();
             if let BTypes::LIST(l) = peers {
                 l.iter().for_each(|peers| {
@@ -189,16 +187,18 @@ impl<'a> TrackerParams<'a> {
                         );
                     };
                 });
-            };
+            } else if let BTypes::BSTRING(bpeers) = peers {
+                return (interval, Self::compact_ip_mode(bpeers));
+            }
         };
-        ips
+        (interval, ips)
     }
 }
 
 #[cfg(test)]
 mod test {
 
-    use std::{collections::BTreeMap, net::SocketAddr};
+    use std::net::SocketAddr;
 
     use super::TrackerParams;
     use crate::torrent::Torrent;
@@ -232,7 +232,8 @@ mod test {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
-        assert!(!tracker.announce().unwrap().is_empty());
+        let announce = tracker.announce().unwrap();
+        assert!(!announce.peer.is_empty());
     }
 
     #[test]
@@ -240,15 +241,30 @@ mod test {
         let fs = "pulpfiction.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
-        assert_eq!(tracker.announce().unwrap(), BTreeMap::new());
+        let announce = tracker.announce().unwrap();
+        assert!(!announce.peer.is_empty());
     }
+
     #[test]
-    fn parse_ip() {
+    fn parse_compact_ip() {
         let ip = &[127, 0, 0, 1, 31, 144, 0, 0, 0, 0, 0, 0];
         let mut expected = vec![SocketAddr::from(([127, 0, 0, 1], 8080))];
         expected.push(SocketAddr::from(([0, 0, 0, 0], 0)));
 
         let ips = TrackerParams::compact_ip_mode(ip);
         assert_eq!(ips, expected);
+    }
+
+    #[test]
+    fn parse_non_compact_ip() {
+        let data = "d8:intervali100e5:peersld2:ip13:192.168.1.1054:porti6881eed2:ip9:127.0.0.14:porti8080eeee"
+            .as_bytes()
+            .to_vec();
+        let res = TrackerParams::bencoded_ip_mode(data);
+        let expected = vec![
+            "192.168.1.105:6881".parse::<SocketAddr>().unwrap(),
+            "127.0.0.1:8080".parse::<SocketAddr>().unwrap(),
+        ];
+        assert_eq!(res.1, expected);
     }
 }
