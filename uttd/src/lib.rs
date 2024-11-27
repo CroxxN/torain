@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::{Scheme, Url};
 
 #[derive(Debug)]
@@ -15,6 +16,7 @@ pub enum UttdError {
     IpParseFail(AddrParseError),
     IoError(std::io::Error),
     FailedRequest,
+    RequestTimeout,
 }
 
 impl From<AddrParseError> for UttdError {
@@ -29,6 +31,12 @@ impl From<std::io::Error> for UttdError {
     }
 }
 
+impl From<tokio::time::error::Elapsed> for UttdError {
+    fn from(_: tokio::time::error::Elapsed) -> Self {
+        Self::RequestTimeout
+    }
+}
+
 pub struct Stream {
     pub stream: StreamType,
     host: String,
@@ -38,6 +46,9 @@ pub enum StreamType {
     TCP(TcpStream),
     UDP(Udp),
 }
+
+#[derive(Debug)]
+pub struct AsyncStream(tokio::net::TcpStream);
 
 #[allow(dead_code)]
 pub struct Udp {
@@ -58,7 +69,6 @@ impl Stream {
     /// assert!(!res.is_empty());
     /// ```
     pub fn new(url: &Url) -> Result<Self, UttdError> {
-        println!("{:?}", url);
         let stream = match url.scheme {
             Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.url).unwrap()),
             Scheme::UDP => {
@@ -169,9 +179,29 @@ impl Stream {
     }
 }
 
+impl AsyncStream {
+    pub async fn new(url: &Url) -> Result<Self, UttdError> {
+        let stream = tokio::time::timeout(
+            // set timeout to 15 seconds
+            Duration::from_secs(15),
+            tokio::net::TcpStream::connect(&url.url),
+        )
+        .await?;
+        // TODO: Change this unwrap to handle failed connection
+
+        Ok(Self(stream?))
+    }
+
+    pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) {
+        self.0.write_all(data).await.unwrap();
+        self.0.read_exact(res).await.unwrap();
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::{url::Url, Stream, StreamType};
+
+    use crate::{url::Url, AsyncStream, Stream, StreamType};
     use std::{
         io::{Read, Write},
         net::TcpStream,
@@ -209,5 +239,13 @@ mod test {
         let mut res = vec![];
         tcp.read_to_end(&mut res).unwrap();
         assert_eq!([res[9], res[10], res[11]], [b'2', b'0', b'0']);
+    }
+    #[tokio::test]
+    async fn test_async_stream() {
+        let url = Url::new("https://google.com:80").unwrap();
+        let mut stream = AsyncStream::new(&url).await.unwrap();
+        let mut res = vec![0; 8];
+        stream.send(&[0], &mut res).await;
+        assert!(res[0] != 0);
     }
 }
