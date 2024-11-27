@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use uttd::{url::Url, Stream};
+use uttd::{url::Url, AsyncStream};
 
 #[derive(Debug)]
 pub struct Peers {
@@ -19,8 +19,15 @@ impl Peers {
             peer: ip,
         }
     }
-    pub fn handshake(&self, info_hash: &[u8], peer_id: &[u8]) -> Vec<u8> {
+    pub async fn handshake(&self, info_hash: &[u8], peer_id: &[u8]) -> Vec<u8> {
         let peer = &self.peer;
+        let mut active_peers = vec![];
+        for url in peer {
+            let astream = AsyncStream::new(url).await;
+            if let Ok(ast) = astream {
+                active_peers.push(ast);
+            }
+        }
         let mut res = vec![0; 68];
         let mut data = Vec::new();
         data.push(19_u8);
@@ -29,8 +36,8 @@ impl Peers {
         data.extend_from_slice(&[0; 8]);
         data.extend_from_slice(&info_hash[0..20]);
         data.extend_from_slice(&peer_id[0..20]);
-        let mut stream = Stream::new(&peer[0]).unwrap();
-        stream.send(&data, &mut res).unwrap();
+        let mut stream = AsyncStream::new(&peer[0]).await;
+        stream.send(&data, &mut res).await;
         res
     }
 }
@@ -69,15 +76,15 @@ mod test {
         assert!(res[0] == 19);
     }
 
-    #[test]
-    fn handshake_test() {
+    #[tokio::test]
+    async fn handshake_test() {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
         let announce = tracker.announce().unwrap();
         let info_hash = torrent.hash;
         let peer_id = tracker.peer_id;
-        let res = announce.handshake(&info_hash, &peer_id);
+        let res = announce.handshake(&info_hash, &peer_id).await;
         assert_eq!(res[0], 19);
     }
 }
