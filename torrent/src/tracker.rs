@@ -11,8 +11,6 @@ use crate::peers::Peers;
 use crate::torrent::{FileMode, Torrent};
 use core::panic;
 use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::str::FromStr;
 
 pub struct TrackerParams<'a> {
     pub url: Url,
@@ -45,7 +43,7 @@ impl From<Event> for &str {
 }
 
 impl<'a> TrackerParams<'a> {
-    fn new(torrent: &'a Torrent) -> Self {
+    pub fn new(torrent: &'a Torrent) -> Self {
         let peer_id = "--sd--TORAIN---01523".as_bytes()[..20].try_into().unwrap();
         let port = 6881;
         let left = Self::calculate_left(&torrent) as u64;
@@ -153,20 +151,20 @@ impl<'a> TrackerParams<'a> {
         Ok(peers)
     }
 
-    pub fn compact_ip_mode(bytes: &[u8]) -> Vec<SocketAddr> {
-        let ips: Vec<SocketAddr> = bytes
+    pub fn compact_ip_mode(bytes: &[u8]) -> Vec<Url> {
+        let ips: Vec<Url> = bytes
             .chunks(6)
             .map(|x| {
                 let ip: [u8; 4] = x[0..4].try_into().unwrap();
                 let port = u16::from_be_bytes(x[4..6].try_into().unwrap());
-                SocketAddr::from((ip, port))
+                Url::from_ip_bytes(ip, port)
             })
             .collect();
 
         ips
     }
 
-    fn bencoded_ip_mode(bytes: Vec<u8>) -> (usize, Vec<SocketAddr>) {
+    fn bencoded_ip_mode(bytes: Vec<u8>) -> (usize, Vec<Url>) {
         let mut ips = Vec::new();
         let mut interval = 0;
 
@@ -182,9 +180,7 @@ impl<'a> TrackerParams<'a> {
                     if let BTypes::DICT(peer_list) = peers {
                         let ip: String = peer_list.get("ip").unwrap().try_into().unwrap();
                         let port: usize = peer_list.get("port").unwrap().try_into().unwrap();
-                        ips.push(
-                            SocketAddr::from_str(format!("{}:{}", ip, port).as_str()).unwrap(),
-                        );
+                        ips.push(Url::from_ip(&ip, port as u16).unwrap());
                     };
                 });
             } else if let BTypes::BSTRING(bpeers) = peers {
@@ -198,7 +194,7 @@ impl<'a> TrackerParams<'a> {
 #[cfg(test)]
 mod test {
 
-    use std::net::SocketAddr;
+    use uttd::url::Url;
 
     use super::TrackerParams;
     use crate::torrent::Torrent;
@@ -248,8 +244,8 @@ mod test {
     #[test]
     fn parse_compact_ip() {
         let ip = &[127, 0, 0, 1, 31, 144, 0, 0, 0, 0, 0, 0];
-        let mut expected = vec![SocketAddr::from(([127, 0, 0, 1], 8080))];
-        expected.push(SocketAddr::from(([0, 0, 0, 0], 0)));
+        let mut expected = vec![Url::from_ip_bytes([127, 0, 0, 1], 8080)];
+        expected.push(Url::from_ip_bytes([0, 0, 0, 0], 0));
 
         let ips = TrackerParams::compact_ip_mode(ip);
         assert_eq!(ips, expected);
@@ -262,8 +258,8 @@ mod test {
             .to_vec();
         let res = TrackerParams::bencoded_ip_mode(data);
         let expected = vec![
-            "192.168.1.105:6881".parse::<SocketAddr>().unwrap(),
-            "127.0.0.1:8080".parse::<SocketAddr>().unwrap(),
+            Url::from_ip("192.168.1.105", 6881).unwrap(),
+            Url::from_ip("127.0.0.1", 8080).unwrap(),
         ];
         assert_eq!(res.1, expected);
     }

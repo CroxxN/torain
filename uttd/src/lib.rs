@@ -58,6 +58,7 @@ impl Stream {
     /// assert!(!res.is_empty());
     /// ```
     pub fn new(url: &Url) -> Result<Self, UttdError> {
+        println!("{:?}", url);
         let stream = match url.scheme {
             Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.url).unwrap()),
             Scheme::UDP => {
@@ -116,8 +117,14 @@ impl Stream {
     }
 
     fn send_tcp(stream: &mut TcpStream, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
-        stream.write_all(data)?;
-        stream.read_to_end(res)?;
+        if res.len() == 0 {
+            stream.write_all(data)?;
+            stream.read_to_end(res)?;
+        } else {
+            stream.write_all(data).unwrap();
+            assert!(res.len() == 68);
+            stream.read_exact(res).unwrap();
+        }
         Ok(())
     }
 

@@ -64,6 +64,30 @@ impl Url {
             location,
         })
     }
+    pub fn from_ip_bytes(ip: [u8; 4], port: u16) -> Self {
+        let mut ip_addr = String::new();
+        // let mut ip = ip.iter().map(|x| *x as char).collect::<String>();
+        ip.iter()
+            .for_each(|x| ip_addr.push_str(&format!("{}.", *x)));
+        ip_addr.pop();
+        ip_addr.push_str(&format!(":{}", port));
+        Self {
+            url: ip_addr.clone(),
+            scheme: Scheme::HTTP,
+            host: ip_addr,
+            location: "/".to_string(),
+        }
+    }
+
+    pub fn from_ip(ip: &str, port: u16) -> Result<Self, UrlError> {
+        let ip_address = format!("{}:{}", ip, port);
+        Ok(Self {
+            url: ip_address.clone(),
+            scheme: Scheme::HTTP,
+            host: ip_address,
+            location: "/".to_string(),
+        })
+    }
 
     /// Get the port associated with the remote address
     /// ```
