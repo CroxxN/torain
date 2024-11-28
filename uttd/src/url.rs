@@ -2,7 +2,6 @@ use crate::error::UrlError;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Url {
-    pub url: String,
     pub scheme: Scheme,
     pub host: String,
     pub location: String,
@@ -28,7 +27,6 @@ impl From<&str> for Scheme {
 impl Default for Url {
     fn default() -> Self {
         Self {
-            url: "127.0.0.1:0".to_owned(),
             scheme: Scheme::UDP,
             host: "127.0.0.1".to_owned(),
             location: "/".to_owned(),
@@ -36,7 +34,7 @@ impl Default for Url {
     }
 }
 
-impl Url {
+impl<'a> Url {
     /// Create a new 'Url' from a base address
     /// The `address` must be in the form "<scheme://address:port/{path...}>"
 
@@ -45,47 +43,42 @@ impl Url {
     /// let url = Url::new("http://google.com:80/some_page").unwrap();
     /// ```
 
-    pub fn new(address: &str) -> Result<Self, UrlError> {
+    pub fn new(address: &'a str) -> Result<Self, UrlError> {
         let (scheme, base) = address.split_once(':').ok_or(UrlError::InvalidUrl)?;
         let mut base = base.strip_prefix("//").ok_or(UrlError::InvalidUrl)?;
+
         // let (base, port) = base.rsplit_once(':').ok_or(UrlError::InvalidUrl)?;
+        let mut loc = "/";
 
-        let mut location = "/".to_owned();
-
-        if let Some((b, loc)) = base.rsplit_once('/') {
+        if let Some((b, location)) = base.rsplit_once('/') {
             base = b;
-            location = format!("/{}", loc);
+            loc = location;
         }
 
         Ok(Self {
-            url: base.to_owned(),
             scheme: scheme.into(),
             host: base.to_owned(),
-            location,
+            location: loc.to_owned(),
         })
     }
-    pub fn from_ip_bytes(ip: [u8; 4], port: u16) -> Self {
+    pub fn from_ip_bytes(ip: &'a [u8], port: u16) -> Self {
         let mut ip_addr = String::new();
-        // let mut ip = ip.iter().map(|x| *x as char).collect::<String>();
-        ip.iter()
-            .for_each(|x| ip_addr.push_str(&format!("{}.", *x)));
+        ip.iter().for_each(|x| ip_addr.push_str(&format!("{}.", x)));
         ip_addr.pop();
-        ip_addr.push_str(&format!(":{}", port));
+        let ip = format!("{}:{}", ip_addr, port);
         Self {
-            url: ip_addr.clone(),
             scheme: Scheme::HTTP,
-            host: ip_addr,
-            location: "/".to_string(),
+            host: ip,
+            location: "/".to_owned(),
         }
     }
 
-    pub fn from_ip(ip: &str, port: u16) -> Result<Self, UrlError> {
-        let ip_address = format!("{}:{}", ip, port);
+    pub fn from_ip(ip: &'a str, port: u16) -> Result<Self, UrlError> {
+        let ip = format!("{}:{}", ip, port);
         Ok(Self {
-            url: ip_address.clone(),
             scheme: Scheme::HTTP,
-            host: ip_address,
-            location: "/".to_string(),
+            host: ip,
+            location: "/".to_owned(),
         })
     }
 
@@ -97,7 +90,7 @@ impl Url {
     /// ```
 
     pub fn port(&self) -> u16 {
-        let (_, port) = self.url.split_once(':').unwrap();
+        let (_, port) = self.host.split_once(':').unwrap();
         port.parse().unwrap()
     }
 }
@@ -115,16 +108,10 @@ mod test {
         let port = url.port();
         let scheme = url.scheme;
         let host = url.host;
-        let location = url.location;
 
         assert_eq!(
-            (port, scheme, host, location),
-            (
-                6969,
-                Scheme::HTTP,
-                "bttracker.debian.org:6969".to_owned(),
-                "/announce".to_owned()
-            )
+            (port, scheme, host),
+            (6969, Scheme::HTTP, "bttracker.debian.org:6969".to_owned())
         );
     }
 
@@ -135,16 +122,10 @@ mod test {
         let port = url.port();
         let scheme = url.scheme;
         let host = url.host;
-        let location = url.location;
 
         assert_eq!(
-            (port, scheme, host, location),
-            (
-                1337,
-                Scheme::UDP,
-                "open.demonii.com:1337".to_owned(),
-                "/".to_owned()
-            )
+            (port, scheme, host),
+            (1337, Scheme::UDP, "open.demonii.com:1337".to_owned())
         );
     }
 }

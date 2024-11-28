@@ -70,12 +70,12 @@ impl Stream {
     /// ```
     pub fn new(url: &Url) -> Result<Self, UttdError> {
         let stream = match url.scheme {
-            Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.url).unwrap()),
+            Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.host).unwrap()),
             Scheme::UDP => {
                 let mut sock = UdpSocket::bind("0.0.0.0:0").unwrap();
                 sock.set_read_timeout(Some(Duration::from_secs(5)))?;
                 sock.set_write_timeout(Some(Duration::from_secs(5)))?;
-                sock.connect(&url.url).unwrap();
+                sock.connect(&url.host).unwrap();
                 let connection_id = Self::initiate_udp(&mut sock)?;
                 StreamType::UDP(Udp {
                     socket: sock,
@@ -86,7 +86,7 @@ impl Stream {
         };
         Ok(Stream {
             stream,
-            host: url.host.clone(),
+            host: url.host.to_owned(),
         })
     }
 
@@ -168,9 +168,10 @@ impl Stream {
     /// ```
 
     pub fn get(&mut self, path: &str) -> Result<Vec<u8>, UttdError> {
-        let (host, _) = self.host.split_once(':').unwrap();
+        let (host, _) = self.host.split_once(":").unwrap();
+
         let get_header = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+            "GET /{} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
             path, host
         );
         let mut res = vec![];
@@ -179,12 +180,12 @@ impl Stream {
     }
 }
 
-impl AsyncStream {
+impl<'a> AsyncStream {
     pub async fn new(url: &Url) -> Result<Self, UttdError> {
         let stream = tokio::time::timeout(
-            // set timeout to 15 seconds
-            Duration::from_secs(15),
-            tokio::net::TcpStream::connect(&url.url),
+            // set timeout to 5 seconds
+            Duration::from_secs(5),
+            tokio::net::TcpStream::connect(&url.host),
         )
         .await?;
         // TODO: Change this unwrap to handle failed connection
@@ -192,9 +193,10 @@ impl AsyncStream {
         Ok(Self(stream?))
     }
 
-    pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) {
+    pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<usize, UttdError> {
         self.0.write_all(data).await.unwrap();
-        self.0.read_exact(res).await.unwrap();
+        let res = self.0.read_exact(res).await?;
+        Ok(res)
     }
 }
 
@@ -212,7 +214,6 @@ mod test {
     #[test]
     fn http_get_request() {
         let url = Url::new("http://bttracker.debian.org:6969/announce").unwrap();
-        println!("{}", url.url);
         let mut stream = Stream::new(&url).unwrap();
         let response = stream.get("/").unwrap();
 
@@ -245,7 +246,7 @@ mod test {
         let url = Url::new("https://google.com:80").unwrap();
         let mut stream = AsyncStream::new(&url).await.unwrap();
         let mut res = vec![0; 8];
-        stream.send(&[0], &mut res).await;
+        stream.send(&[0], &mut res).await.unwrap();
         assert!(res[0] != 0);
     }
 }

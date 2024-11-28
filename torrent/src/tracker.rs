@@ -157,7 +157,7 @@ impl<'a> TrackerParams<'a> {
             .map(|x| {
                 let ip: [u8; 4] = x[0..4].try_into().unwrap();
                 let port = u16::from_be_bytes(x[4..6].try_into().unwrap());
-                Url::from_ip_bytes(ip, port)
+                Url::from_ip_bytes(&ip, port)
             })
             .collect();
 
@@ -244,8 +244,8 @@ mod test {
     #[test]
     fn parse_compact_ip() {
         let ip = &[127, 0, 0, 1, 31, 144, 0, 0, 0, 0, 0, 0];
-        let mut expected = vec![Url::from_ip_bytes([127, 0, 0, 1], 8080)];
-        expected.push(Url::from_ip_bytes([0, 0, 0, 0], 0));
+        let mut expected = vec![Url::from_ip_bytes(&[127, 0, 0, 1], 8080)];
+        expected.push(Url::from_ip_bytes(&[0, 0, 0, 0], 0));
 
         let ips = TrackerParams::compact_ip_mode(ip);
         assert_eq!(ips, expected);

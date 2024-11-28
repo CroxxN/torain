@@ -36,8 +36,8 @@ impl TryFrom<&BTypes> for Url {
     type Error = BencodeErr;
     fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
         if let BTypes::BSTRING(s) = value {
-            let p = vec_to_string(s);
-            Ok(Url::new(&p)?)
+            let p = std::str::from_utf8(s).unwrap();
+            Ok(Url::new(p)?)
         } else {
             Err(BencodeErr::Berr)
         }
