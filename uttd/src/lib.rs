@@ -195,8 +195,8 @@ impl<'a> AsyncStream {
 
     pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<usize, UttdError> {
         self.0.write_all(data).await.unwrap();
-        let res = self.0.read_exact(res).await?;
-        Ok(res)
+        let res = tokio::time::timeout(Duration::from_secs(15), self.0.read_exact(res)).await?;
+        Ok(res?)
     }
 }
 

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::sync::Arc;
 
 use uttd::{url::Url, AsyncStream, UttdError};
@@ -39,14 +37,15 @@ impl Peers {
         let mut handshake = Handshake::new(info_hash, peer_id);
         let handshake_bytes: Arc<Vec<u8>> = Arc::new(handshake.as_bytes_mut().to_vec());
 
-        let mut handles = vec![];
+        let mut handles = Vec::with_capacity(peer.len());
+
+        let mut successful_streams = Vec::with_capacity(peer.len());
 
         for url in peer {
             let bytes = handshake_bytes.clone();
             let handle = tokio::spawn(handshakes(url, bytes));
             handles.push(handle);
         }
-        let mut successful_streams = vec![];
 
         for handle in handles {
             let res = handle.await.unwrap();
