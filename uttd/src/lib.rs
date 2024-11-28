@@ -109,9 +109,9 @@ impl Stream {
 
     pub fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
-        // method for UDP expects an already allocated buffer. Vec::new() just creates a container with lenght 0.
+        // method for UDP expects an already allocated buffer. Vec::new() just creates a container with length 0.
         // So, we iniliatize a vec with vec![] to initialize a vec with 1024 bytes of space. If any request is larger than that,
-        // the vec accomodates to fill the space.
+        // the vec accommodates to fill the space.
 
         // let mut res = vec![0u8; 1024];
         // let mut udp_res = [0; 1024];
@@ -155,7 +155,7 @@ impl Stream {
     }
 
     /// Perform a get request on this stream
-    /// `path` referes to the location of the url + any params
+    /// `path` refers to the location of the url + any params
     /// For example: google.com:80/{path}?param=value
 
     /// ```

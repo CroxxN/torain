@@ -151,7 +151,7 @@ mod test {
 
     #[test]
     // single file mode
-    fn debain() {
+    fn debian() {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         assert_eq!(
