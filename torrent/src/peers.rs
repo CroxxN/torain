@@ -12,6 +12,19 @@ pub struct Peers {
     pub peer: Vec<Url>,
 }
 
+async fn handshakes(url: Arc<Url>, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
+    let mut stream = AsyncStream::new(&url).await;
+    if let Ok(ast) = &mut stream {
+        let mut res = vec![0; 68];
+        if let Ok(bytes_read) = ast.send(&handshake, &mut res).await {
+            if bytes_read == 68 && res[0] == 19 {
+                return stream;
+            };
+        };
+    };
+    Err(UttdError::FailedRequest)
+}
+
 impl Peers {
     pub fn new(interval: i32, seeders: i32, leechers: i32, ip: Vec<Url>) -> Self {
         Self {
@@ -43,19 +56,6 @@ impl Peers {
         }
         successful_streams
     }
-}
-
-async fn handshakes(url: Arc<Url>, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
-    let mut stream = AsyncStream::new(&url).await;
-    if let Ok(ast) = &mut stream {
-        let mut res = vec![0; 68];
-        if let Ok(bytes_read) = ast.send(&handshake, &mut res).await {
-            if bytes_read == 68 && res[0] == 19 {
-                return stream;
-            };
-        };
-    };
-    Err(UttdError::FailedRequest)
 }
 
 #[repr(C)]
