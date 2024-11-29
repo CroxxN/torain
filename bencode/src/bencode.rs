@@ -48,7 +48,7 @@ where
     T: Iterator<Item = u8>,
 {
     match anchor as char {
-        'i' => Ok(BTypes::INT(bcode_interger(data)?)),
+        'i' => Ok(BTypes::INT(bcode_integer(data)?)),
         'l' => Ok(BTypes::LIST(bcode_list(data)?)),
         'd' => Ok(BTypes::DICT(bcode_dict(data)?)),
         '0'..='9' => Ok(BTypes::BSTRING(bcode_string(data, anchor)?)),
@@ -56,7 +56,7 @@ where
     }
 }
 
-fn bcode_interger<T>(int_seq: &mut T) -> Result<i64, DecodeError>
+fn bcode_integer<T>(int_seq: &mut T) -> Result<i64, DecodeError>
 where
     T: Iterator<Item = u8>,
 {
