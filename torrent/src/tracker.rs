@@ -8,7 +8,7 @@ use uttd::StreamType;
 use uttd::{url::Url, Stream};
 
 use crate::peers::Peers;
-use crate::torrent::{FileMode, Torrent};
+use crate::torrent::Torrent;
 use core::panic;
 use std::collections::HashMap;
 
@@ -46,7 +46,7 @@ impl<'a> TrackerParams<'a> {
     pub fn new(torrent: &'a Torrent) -> Self {
         let peer_id = "--sd--TORAIN---01523".as_bytes()[..20].try_into().unwrap();
         let port = 6881;
-        let left = Self::calculate_left(&torrent) as u64;
+        let left = torrent.calculate_left() as u64;
         Self {
             url: torrent.announce.clone(),
             info_hash: torrent.hash.as_slice(),
@@ -62,14 +62,6 @@ impl<'a> TrackerParams<'a> {
     }
 
     // will be more sophisticated once resume function is implemented
-    fn calculate_left(torrent: &Torrent) -> usize {
-        match torrent.info.mode {
-            FileMode::SingleMode { length } => length,
-            FileMode::MultiMode { ref files } => {
-                files.iter().map(|f| f.length).fold(0, |acc, l| acc + l)
-            }
-        }
-    }
 
     fn params(&self) -> HashMap<&'static str, Vec<u8>> {
         let mut map = HashMap::new();
@@ -204,7 +196,7 @@ mod test {
         let fs = "debian.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         if let crate::torrent::FileMode::SingleMode { length } = torrent.info.mode {
-            let left = TrackerParams::calculate_left(&torrent);
+            let left = torrent.calculate_left();
             assert_eq!(left, length);
         }
     }
@@ -218,7 +210,7 @@ mod test {
             for f in files {
                 length += f.length;
             }
-            let left = TrackerParams::calculate_left(&torrent);
+            let left = torrent.calculate_left();
             assert_eq!(left, length);
         }
     }

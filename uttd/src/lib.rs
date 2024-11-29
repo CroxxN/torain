@@ -198,6 +198,17 @@ impl<'a> AsyncStream {
         let res = tokio::time::timeout(Duration::from_secs(15), self.0.read_exact(res)).await?;
         Ok(res?)
     }
+    pub async fn read_once(&mut self) -> Result<u32, UttdError> {
+        // peers send keep_alive messages every 2 minutes. If we don't receive anything for 2 minutes, we close the connection
+        let mut res = [0_u8; 4];
+        _ = tokio::time::timeout(Duration::from_secs(121), self.0.read_exact(&mut res)).await??;
+        let length = u32::from_be_bytes(res.try_into().unwrap());
+        Ok(length)
+    }
+    pub async fn read_multiple(&mut self, res: &mut Vec<u8>) -> Result<(), UttdError> {
+        _ = tokio::time::timeout(Duration::from_secs(121), self.0.read_exact(res)).await??;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

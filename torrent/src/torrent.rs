@@ -137,6 +137,15 @@ impl Torrent {
             self.hash = sha.get_hash();
         }
     }
+    // TODO: cache this
+    pub fn calculate_left(&self) -> usize {
+        match self.info.mode {
+            FileMode::SingleMode { length } => length,
+            FileMode::MultiMode { ref files } => {
+                files.iter().map(|f| f.length).fold(0, |acc, l| acc + l)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
