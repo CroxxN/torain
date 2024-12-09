@@ -32,7 +32,7 @@ impl Peers {
             peer: ip,
         }
     }
-    pub async fn handshake(self, info_hash: [u8; 20], peer_id: [u8; 20]) -> Vec<Arc<AsyncStream>> {
+    pub async fn handshake(self, info_hash: [u8; 20], peer_id: [u8; 20]) -> Vec<AsyncStream> {
         // let peer: Vec<Arc<Url>> = self.peer.clone().into_iter().map(|x| Arc::new(x)).collect();
         let peer = self.peer;
         let mut handshake = Handshake::new(info_hash, peer_id);
@@ -51,7 +51,6 @@ impl Peers {
         for handle in handles {
             let res = handle.await.unwrap();
             if let Ok(r) = res {
-                let r = Arc::new(r);
                 successful_streams.push(r);
             }
         }

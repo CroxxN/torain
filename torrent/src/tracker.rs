@@ -1,8 +1,6 @@
-#![allow(dead_code)]
-
-use ::bencode::bencode::BTypes;
-use ::bencode::utils::BencodeErr;
-use bencode::bencode;
+use bencode::bencode::decode;
+use bencode::bencode::BTypes;
+use bencode::utils::BencodeErr;
 use uttd::urutil::{build_url, response};
 use uttd::StreamType;
 use uttd::{url::Url, Stream};
@@ -160,7 +158,7 @@ impl<'a> TrackerParams<'a> {
         let mut ips = Vec::new();
         let mut interval = 0;
 
-        let decoded_body = bencode::decode(&mut bytes.into_iter()).unwrap();
+        let decoded_body = decode(&mut bytes.into_iter()).unwrap();
         if let BTypes::DICT(d) = decoded_body {
             if let Some(_) = d.get("failure") {
                 panic!("FAILED");
