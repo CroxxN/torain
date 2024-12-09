@@ -1,9 +1,13 @@
 use crate::error::UrlError;
 
+/// Url
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Url {
+    /// Scheme of the url --- HTTPS, HTTP or UDP
     pub scheme: Scheme,
+    /// Host of the server --- in the form of {domain}:{port}
     pub host: String,
+    /// additional path --- default to '/'
     pub location: String,
 }
 
@@ -61,6 +65,8 @@ impl<'a> Url {
             location: loc.to_owned(),
         })
     }
+    /// Create a `Url` from bytes in form of [x, x, x, x]
+    /// IPv4
     pub fn from_ip_bytes(ip: &'a [u8], port: u16) -> Self {
         let mut ip_addr = String::new();
         ip.iter().for_each(|x| ip_addr.push_str(&format!("{}.", x)));
@@ -73,6 +79,7 @@ impl<'a> Url {
         }
     }
 
+    /// Create `Url` from a string of ip address
     pub fn from_ip(ip: &'a str, port: u16) -> Result<Self, UrlError> {
         let ip = format!("{}:{}", ip, port);
         Ok(Self {

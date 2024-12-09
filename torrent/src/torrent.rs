@@ -10,15 +10,34 @@ use bencode::utils::decode_option;
 use error::TorrentError;
 use uttd::url::Url;
 
+/// A structure that holds information about a torrent file
 #[derive(Default, Debug, Clone)]
 pub struct Torrent {
+    /// url of the tracker. Announce requests are sent
+    /// to this server --- Can be HTTP or UDP
     pub announce: Url,
+
+    /// Multiple announce list as specified in BEP 00012
+    /// https://www.bittorrent.org/beps/bep_0012.html    
     pub announce_list: Option<Vec<String>>,
+
+    /// Date of creation of the torrent
     pub creation_date: Option<usize>,
+
+    /// Plain-text comments regarding the torrent
     pub comment: Option<String>,
+
+    /// Creator of this torrent
     pub created_by: Option<String>,
+
+    /// string encoding format used in `pieces` field
+    /// rarely used
     pub encoding: Option<String>,
+
+    /// Information of the torrent---i.e. Name, piece length, etc.
     pub info: Info,
+
+    /// SHA1 hash of the bencoded info dictionary
     pub hash: [u8; 20],
 }
 
@@ -30,6 +49,8 @@ pub struct Info {
     pub mode: FileMode,
 }
 
+/// Torrents can have 2 file modes: Single and Multi
+/// As the name suggests, single mode is used when the torrent only contains a single file, while multi is used when a folder is to be downloaded
 #[derive(Debug, PartialEq, Clone)]
 pub enum FileMode {
     SingleMode { length: usize },
@@ -42,6 +63,8 @@ impl Default for FileMode {
     }
 }
 
+/// Individual files stored in the torrent
+/// Only valid for multi mode
 #[derive(Debug, PartialEq, Clone)]
 pub struct Files {
     pub length: usize,
@@ -49,6 +72,13 @@ pub struct Files {
 }
 
 impl Torrent {
+    /// create a `Torrent` from a .torrent file
+    /// @arg 1: path of the torrent file
+    /// ```
+    /// use uttd::url::Url;
+    /// use torrent::torrent::Torrent;
+    /// let torrent = Torrent::from_file("{file_name}").unwrap();
+    /// ```
     pub fn from_file(fs: &str) -> Result<Self, TorrentError> {
         use std::{fs::File, io::Read};
         let mut file = File::open(fs).unwrap();
@@ -57,11 +87,15 @@ impl Torrent {
         let mut u8s = content.into_iter();
         Self::decode(&mut u8s)
     }
+
+    /// create `Torrent` from a string of bencoded dictionary
+    /// NOT RECOMMENDED as the `pieces` field may contain invalid UTF-8
     pub fn from_str(val: &str) -> Result<Self, TorrentError> {
         let mut u8s = bencode::utils::bcode_to_u8(val);
         Self::decode(&mut u8s)
     }
 
+    /// extract the torrent's information
     fn decode<T>(u8s: &mut T) -> Result<Self, TorrentError>
     where
         T: Iterator<Item = u8>,
@@ -79,6 +113,8 @@ impl Torrent {
         Ok(torrent)
     }
 
+    /// Decode fields of the torrent
+    /// @arg 1: BTreeMap of bencoded dictionary
     fn de_fields(&mut self, d: BTreeMap<String, BTypes>) -> Result<(), DecodeError> {
         self.announce = d.get("announce").unwrap().try_into()?;
         self.announce_list = decode_option(d.get("announce-list"))?;
@@ -91,6 +127,7 @@ impl Torrent {
         Ok(())
     }
 
+    /// Decode info field specifically
     fn de_info_fields(&mut self, d: Option<&BTypes>) -> Result<(), DecodeError> {
         if let Some(BTypes::DICT(d)) = d {
             self.info.name = d.get("name").unwrap().try_into()?;
@@ -109,6 +146,8 @@ impl Torrent {
         Ok(())
     }
 
+    /// Decoded info field for multi-field mode
+    /// More keys need to be decoded for multi-mode than single-mode
     fn de_multi_file_mode(d: &BTypes) -> Result<FileMode, DecodeError> {
         if let BTypes::LIST(l) = d {
             let files: Vec<Files> = l
@@ -129,8 +168,11 @@ impl Torrent {
             Err(DecodeError::EOF)
         }
     }
+
+    /// Calculate the SHA1 hash of the bencoded info dict
     pub fn info_hash(&mut self, info: Option<&BTypes>) {
         if let Some(bt) = info {
+            // reseriaze deserialized bencoded dicts and calculate hash
             let parsed = ser(bt);
             let mut sha = Sha1::new();
             sha.append_hash(&parsed);
@@ -138,6 +180,9 @@ impl Torrent {
         }
     }
     // TODO: cache this
+    /// Calculate how much of the file is left to be downloaded
+    /// Used to announce to trackers
+    /// Used to resume downloads
     pub fn calculate_left(&self) -> usize {
         match self.info.mode {
             FileMode::SingleMode { length } => length,

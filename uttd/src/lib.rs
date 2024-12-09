@@ -47,9 +47,6 @@ pub enum StreamType {
     UDP(Udp),
 }
 
-#[derive(Debug)]
-pub struct AsyncStream(tokio::net::TcpStream);
-
 #[allow(dead_code)]
 pub struct Udp {
     socket: UdpSocket,
@@ -90,9 +87,16 @@ impl Stream {
         })
     }
 
+    /// UDP trackers require a initial handshake type message passing
+    /// Defined in BEP 00015
+    /// https://www.bittorrent.org/beps/bep_0015.html
+
     pub fn initiate_udp(stream: &mut UdpSocket) -> Result<i64, UttdError> {
+        // magic
         let protocol_id: i64 = 0x41727101980; // Protocol ID
+                                              // magic
         let action: i32 = 0; // Action: connect
+                             // TODO: use rng
         let transaction_id: i32 = 1; // Random Transaction ID
 
         let mut buf = Vec::new();
@@ -107,6 +111,17 @@ impl Stream {
         Ok(connection_id)
     }
 
+    /// Send `data` to `url` and return response in `res`
+    /// Note: for UDP trackers, `res` must be initialized, preferably with 0's
+    /// ```
+    /// // will not work
+    /// let mut res = Vec::new();
+    /// // will work
+    /// let mut res = vec![0; 10];
+    /// // or
+    /// let mut res = Vec::with_capacity(10);
+    /// ```
+    ///
     pub fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
         // method for UDP expects an already allocated buffer. Vec::new() just creates a container with length 0.
@@ -180,7 +195,14 @@ impl Stream {
     }
 }
 
+/// Async version of `Stream`
+/// Holds a TcpStream underneth
+#[derive(Debug)]
+pub struct AsyncStream(tokio::net::TcpStream);
+
 impl<'a> AsyncStream {
+    /// Create a new `AsyncStream` on provided `url`
+    /// Default duration is `5` seconds
     pub async fn new(url: &Url) -> Result<Self, UttdError> {
         let stream = tokio::time::timeout(
             // set timeout to 5 seconds
@@ -193,11 +215,16 @@ impl<'a> AsyncStream {
         Ok(Self(stream?))
     }
 
+    /// Send `data` to the stream and receive in `res`
+    /// Note: Peers are continuous stream of data. You must
+    /// have initialized `res` with sufficient bytes. It only the exact bytes as is the capacity of `res`
     pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<usize, UttdError> {
         self.0.write_all(data).await.unwrap();
         let res = tokio::time::timeout(Duration::from_secs(15), self.0.read_exact(res)).await?;
         Ok(res?)
     }
+
+    /// Read 4 bytes of data once and return
     pub async fn read_once(&mut self) -> Result<u32, UttdError> {
         // peers send keep_alive messages every 2 minutes. If we don't receive anything for 2 minutes, we close the connection
         let mut res = [0_u8; 4];
@@ -205,6 +232,8 @@ impl<'a> AsyncStream {
         let length = u32::from_be_bytes(res.try_into().unwrap());
         Ok(length)
     }
+
+    /// Read `res.len()` bytes of data and pass it through `res`
     pub async fn read_multiple(&mut self, res: &mut Vec<u8>) -> Result<(), UttdError> {
         _ = tokio::time::timeout(Duration::from_secs(121), self.0.read_exact(res)).await??;
         Ok(())

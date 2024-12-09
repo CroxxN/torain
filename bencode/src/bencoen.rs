@@ -1,7 +1,11 @@
+// TODO: Remove clones, use references when possible
+// TODO: Remove .unwrap()'s
+
 // encoding to bencode
 use crate::bencode::BTypes;
 use std::collections::BTreeMap;
 
+/// Serialize rust types into bencode
 pub fn ser(de: &BTypes) -> Vec<u8> {
     match de {
         BTypes::INT(i) => ser_int(*i),

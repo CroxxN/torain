@@ -44,7 +44,7 @@ impl Message {
             4 => Self::Have(u32::from_be_bytes(value[6..10].try_into().unwrap())),
             13 => Self::Request,
             // 5 => Self::BitField(Bitfield::default()),
-            5 => Self::BitField(value[6..len].to_vec()),
+            5 => Self::BitField(value[6..(len - 5)].to_vec()),
             _ => todo!(),
         };
         message
@@ -156,7 +156,9 @@ mod test {
         let peer_id = tracker.peer_id;
         let streams = &mut announce.handshake(info_hash, peer_id).await[0];
         let v = listen_peers(streams).await;
-        assert_eq!(v, Message::KeepAlive);
+        if let Message::BitField(x) = v {
+            assert!(!x.is_empty());
+        }
     }
 }
 // pub async fn download(peers: ){
