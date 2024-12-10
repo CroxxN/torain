@@ -16,6 +16,7 @@ async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, Ut
     if let Ok(ast) = &mut stream {
         let mut res = vec![0; 68];
         if let Ok(bytes_read) = ast.send(&handshake, &mut res).await {
+            println!("{:?}", res);
             if bytes_read == 68 && res[0] == 19 {
                 return stream;
             };
@@ -140,6 +141,17 @@ mod test {
     #[tokio::test]
     async fn streams() {
         let fs = "debian.torrent";
+        let torrent = Torrent::from_file(fs).unwrap();
+        let tracker = TrackerParams::new(&torrent);
+        let announce = tracker.announce().unwrap();
+        let info_hash = torrent.hash;
+        let peer_id = tracker.peer_id;
+        let streams = announce.handshake(info_hash, peer_id).await;
+        assert!(streams.len() != 0);
+    }
+    #[tokio::test]
+    async fn streams_multi() {
+        let fs = "pulpfiction.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
         let announce = tracker.announce().unwrap();

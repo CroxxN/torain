@@ -16,8 +16,8 @@ pub enum Message {
     Have(u32),
     Unrecognized,
     Request,
-    // BitField(Bitfield),
-    BitField(Vec<u8>),
+    BitField(Bitfield),
+    // BitField(Vec<u8>),
     Piece(Vec<u8>),
     Finish,
 }
@@ -36,7 +36,7 @@ impl Message {
             2 => Self::Interested,
             3 => Self::NotInterested,
             4 => Self::Have(u32::from_be_bytes(value[1..5].try_into().unwrap())),
-            5 => Self::BitField(value[1..(len - 1)].to_vec()),
+            5 => Self::BitField(Bitfield::from_bytes(&value[1..(len - 1)], value.len())),
             7 => Self::Piece(value[1..(len - 9)].to_vec()),
             13 => Self::Request,
             _ => todo!(),
@@ -77,7 +77,7 @@ impl Bitfield {
     }
 
     pub fn from_bytes(bits: &[u8], cap: usize) -> Self {
-        let mut bfield = Self::new(cap);
+        let mut bfield = Self::new(8 * (cap - 1));
         if let BitfieldInner::Large(x_field) = &mut bfield.bit {
             bits.iter().enumerate().for_each(|(i, x)| {
                 let x = u8::from_be(*x);
@@ -151,6 +151,8 @@ impl Participants {
             path,
         }
     }
+
+    // continous reading
     async fn listen_peers(url: Arc<Mutex<AsyncStream>>, tx: Sender<(usize, Message)>, idx: usize) {
         loop {
             let message_len = url.lock().await.read_once().await.unwrap();
@@ -170,6 +172,7 @@ impl Participants {
 
         // _ = tokio::fs::create_dir("./.torain_temp").await;
         let peers_amt = self.peers.len();
+        assert!(peers_amt > 0);
 
         // am i choking the remote peer?
         let mut _am_chok: Bitfield = Bitfield::new_compact();
@@ -181,6 +184,8 @@ impl Participants {
         // is the remote peer interested in me?
         let mut peer_interested = Bitfield::new_compact();
 
+        let mut piece_map: Vec<Bitfield> = Vec::new();
+
         let (tx, mut rx) = mpsc::channel::<(usize, Message)>(peers_amt);
         let mut handles = vec![];
 
@@ -190,16 +195,22 @@ impl Participants {
             handles.push(hnd);
         }
 
+        // continous receiving from multiple sources
         loop {
             if let Some((idx, value)) = rx.recv().await {
                 // TODO:
                 match value {
+                    Message::BitField(x_field) => piece_map.push(x_field),
                     Message::Choke => peer_chok.set(idx),
                     Message::Unchoke => peer_chok.set(idx),
                     Message::Interested => peer_interested.set(idx),
-                    _ => unimplemented!(),
+                    _ => {
+                        println!("{:?}", value);
+                        unimplemented!()
+                    }
                 };
             }
+            println!("{:?}", piece_map);
         }
     }
 }
@@ -211,13 +222,16 @@ mod test {
 
     #[tokio::test]
     async fn listen() {
-        let fs = "debian.torrent";
+        // let fs = "debian.torrent";
+        // let fs = "pulpfiction.torrent";
+        let fs = "nocountry.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
         let announce = tracker.announce().unwrap();
         let info_hash = torrent.hash;
         let peer_id = tracker.peer_id;
         let streams = announce.handshake(info_hash, peer_id).await;
+        assert_eq!(streams.len(), 1);
         let down = Participants::new(&torrent, streams).await;
         down.download().await;
     }

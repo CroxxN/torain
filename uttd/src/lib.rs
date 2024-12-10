@@ -220,8 +220,9 @@ impl<'a> AsyncStream {
     /// have initialized `res` with sufficient bytes. It only the exact bytes as is the capacity of `res`
     pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<usize, UttdError> {
         self.0.write_all(data).await.unwrap();
-        let res = tokio::time::timeout(Duration::from_secs(15), self.0.read_exact(res)).await?;
-        Ok(res?)
+        let response =
+            tokio::time::timeout(Duration::from_secs(15), self.0.read_exact(res)).await?;
+        Ok(response?)
     }
 
     /// Read 4 bytes of data once and return
