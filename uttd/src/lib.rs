@@ -1,6 +1,7 @@
 pub mod error;
 pub mod url;
 pub mod urutil;
+pub mod utp;
 
 use std::{
     io::{Read, Write},
