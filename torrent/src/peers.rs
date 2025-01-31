@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use uttd::{url::Url, AsyncStream, UttdError};
+use uttd::{url::Url, utp::UtpPacket, AsyncStream, UtpStream, UttdError};
 
 #[derive(Debug)]
 pub struct Peers {
@@ -11,17 +11,52 @@ pub struct Peers {
     pub peer: Vec<Url>,
 }
 
+// async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
+//     let mut stream = AsyncStream::new(&url).await;
+//     if let Ok(ast) = &mut stream {
+//         let mut res = vec![0; 68];
+//         if let Ok(bytes_read) = ast.send(&handshake, &mut res).await {
+//             println!("{:?}", res);
+//             if bytes_read == 68 && res[0] == 19 {
+//                 return stream;
+//             };
+//         };
+//     };
+//     Err(UttdError::FailedRequest)
+// }
+
 async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
-    let mut stream = AsyncStream::new(&url).await;
-    if let Ok(ast) = &mut stream {
-        let mut res = vec![0; 68];
-        if let Ok(bytes_read) = ast.send(&handshake, &mut res).await {
-            println!("{:?}", res);
-            if bytes_read == 68 && res[0] == 19 {
-                return stream;
-            };
-        };
-    };
+    // let stream = AsyncStream::new(&url).await;
+    // if let Err(e) = stream {
+    //     return Err(e);
+    // }
+    // let mut stream = stream.unwrap();
+    println!("Here?");
+    let mut utp_stream = UtpStream::new(&url).await;
+    println!("{:?}", utp_stream);
+    let utp_data = UtpPacket::new().as_bytes();
+
+    let mut res = vec![0; 68];
+    let mut utp_res = vec![0; 20];
+
+    // tokio::select! {
+    //     bytes_read = stream.send(&handshake, &mut res) => {
+    //         if let Ok(br) = bytes_read {
+    //             if br == 68 && res[0] == 19{
+    //                 return Ok(stream);
+    //             }
+    //         }
+    //     }
+    utp_stream.send(&utp_data, &mut utp_res).await;
+    println!("Here");
+
+    println!("Got utp: {:?}", utp_res);
+
+    let stream = AsyncStream::new(&url).await.unwrap();
+    if utp_res[0] != 0 {
+        return Ok(stream);
+    }
+    // }
     Err(UttdError::FailedRequest)
 }
 
@@ -149,8 +184,9 @@ mod test {
         let streams = announce.handshake(info_hash, peer_id).await;
         assert!(streams.len() != 0);
     }
+
     #[tokio::test]
-    async fn streams_multi() {
+    async fn utp() {
         let fs = "pulpfiction.torrent";
         let torrent = Torrent::from_file(fs).unwrap();
         let tracker = TrackerParams::new(&torrent);
@@ -160,4 +196,15 @@ mod test {
         let streams = announce.handshake(info_hash, peer_id).await;
         assert!(streams.len() != 0);
     }
+    // #[tokio::test]
+    // async fn streams_multi() {
+    //     let fs = "pulpfiction.torrent";
+    //     let torrent = Torrent::from_file(fs).unwrap();
+    //     let tracker = TrackerParams::new(&torrent);
+    //     let announce = tracker.announce().unwrap();
+    //     let info_hash = torrent.hash;
+    //     let peer_id = tracker.peer_id;
+    //     let streams = announce.handshake(info_hash, peer_id).await;
+    //     assert!(streams.len() != 0);
+    // }
 }
