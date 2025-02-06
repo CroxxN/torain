@@ -25,16 +25,17 @@ pub struct Peers {
 //     Err(UttdError::FailedRequest)
 // }
 
+// it works... type shit
 async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
     // let stream = AsyncStream::new(&url).await;
     // if let Err(e) = stream {
     //     return Err(e);
     // }
     // let mut stream = stream.unwrap();
-    println!("Here?");
-    let mut utp_stream = UtpStream::new(&url).await;
-    println!("{:?}", utp_stream);
+    let mut utp_stream = UtpStream::new(&url).await?;
     let utp_data = UtpPacket::new().as_bytes();
+    // println!("{:?}", utp_data);
+    println!("{:?}", url);
 
     let mut res = vec![0; 68];
     let mut utp_res = vec![0; 20];
@@ -48,16 +49,24 @@ async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, Ut
     //         }
     //     }
     utp_stream.send(&utp_data, &mut utp_res).await;
-    println!("Here");
 
-    println!("Got utp: {:?}", utp_res);
+    println!("Got utp: {:?}", url);
 
-    let stream = AsyncStream::new(&url).await.unwrap();
+    let stream = AsyncStream::new(&url).await?;
     if utp_res[0] != 0 {
+        println!("{:?}", utp_res);
         return Ok(stream);
     }
     // }
     Err(UttdError::FailedRequest)
+}
+
+#[tokio::test]
+async fn test_handshake() {
+    let url = Url::from_ip("39.42.236.140", 42245).unwrap();
+    let handshake: Arc<Vec<u8>> = Arc::new(Vec::new());
+
+    println!("{:?}", handshakes(url, handshake).await);
 }
 
 impl Peers {

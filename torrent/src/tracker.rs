@@ -23,6 +23,8 @@ pub struct TrackerParams<'a> {
     pub trackerid: Option<[u8; 20]>,
 }
 
+// TODO: work on DHT protocol... type shit
+
 #[derive(Clone, Copy)]
 pub enum Event {
     Started,
