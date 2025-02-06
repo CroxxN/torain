@@ -242,6 +242,26 @@ impl<'a> AsyncStream {
     }
 }
 
+#[derive(Debug)]
+pub struct UtpStream(tokio::net::UdpSocket);
+
+impl UtpStream {
+    pub async fn new(url: &Url) -> Result<Self, UttdError> {
+        let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+        sock.connect(&url.host).await?;
+        Ok(Self(sock))
+    }
+    pub async fn send(&mut self, data: &[u8], res: &mut [u8]) {
+        res[1] = 15;
+        for _ in 0..5 {
+            self.0.send(data).await.unwrap();
+            if let Ok(_) = tokio::time::timeout(Duration::from_secs(10), self.0.recv(res)).await {
+                break;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
 

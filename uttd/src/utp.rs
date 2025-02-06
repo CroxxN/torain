@@ -1,4 +1,3 @@
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::net::UdpSocket;
@@ -26,56 +25,62 @@ const ST_SYN: u8 = 4;
 // | seq_nr                        | ack_nr                        |
 // +---------------+---------------+---------------+---------------+
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
-#[repr(C, packed)]
+// #[repr(C, packed)]
 pub struct UtpPacket {
     packet_type: u8,
     extension: u8,
-    connection_id: i16,
-    timestamp: i32,
-    timestamp_difference: i32,
-    window_size: i32,
+    connection_id: u16,
+    timestamp: u32,
+    timestamp_difference: u32,
+    window_size: u32,
     /// sequence number
-    seq_number: i16,
+    seq_number: u16,
     /// acknowledged number
-    ack_number: i16,
+    ack_number: u16,
 }
 
 impl UtpPacket {
-    fn new() -> Self {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i32;
+    pub fn new() -> Self {
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+
+        let timestamp = (timestamp.as_secs().wrapping_add(1_000_000) as u32)
+            .wrapping_add(timestamp.subsec_micros())
+            .into();
 
         Self {
-            packet_type: ST_SYN,
+            packet_type: (ST_SYN << 4) | 1,
             extension: 0,
-            connection_id: 0,
+            connection_id: 0x35,
             timestamp,
             timestamp_difference: 0,
-            window_size: 0,
+            window_size: 0xf000,
+            // initialized to 1
             seq_number: 1,
             ack_number: 0,
         }
     }
 
-    fn refetch_timestamp(&mut self) {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i32;
+    pub fn refetch_timestamp(&mut self) {
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let timestamp = (timestamp.as_secs().wrapping_add(1_000_000) as u32)
+            .wrapping_add(timestamp.subsec_micros())
+            .into();
 
         self.timestamp = timestamp;
     }
 
-    fn as_bytes(self) -> Vec<u8> {
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                &self as *const Self as *mut Self as *mut u8,
-                std::mem::size_of::<Self>(),
-            )
-        };
-        bytes.to_vec()
+    pub fn as_bytes(self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&self.packet_type.to_be_bytes());
+        bytes.extend_from_slice(&self.extension.to_be_bytes());
+        bytes.extend_from_slice(&self.connection_id.to_be_bytes());
+        bytes.extend_from_slice(&self.timestamp.to_be_bytes());
+        bytes.extend_from_slice(&self.timestamp_difference.to_be_bytes());
+        bytes.extend_from_slice(&self.window_size.to_be_bytes());
+        bytes.extend_from_slice(&self.seq_number.to_be_bytes());
+        bytes.extend_from_slice(&self.ack_number.to_be_bytes());
+        println!("{}", bytes.len());
+        bytes
     }
 }
 
