@@ -199,7 +199,13 @@ impl Stream {
 /// Async version of `Stream`
 /// Holds a TcpStream underneth
 #[derive(Debug)]
-pub struct AsyncStream(tokio::net::TcpStream);
+pub struct AsyncStream(AsyncStreamType);
+
+#[derive(Debug)]
+pub enum AsyncStreamType {
+    TcpStream(tokio::net::TcpStream),
+    UtpStream(tokio::net::UdpSocket),
+}
 
 impl<'a> AsyncStream {
     /// Create a new `AsyncStream` on provided `url`
@@ -211,7 +217,6 @@ impl<'a> AsyncStream {
             tokio::net::TcpStream::connect(&url.host),
         )
         .await?;
-        // TODO: Change this unwrap to handle failed connection
 
         Ok(Self(stream?))
     }

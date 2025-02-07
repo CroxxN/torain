@@ -48,6 +48,7 @@ impl UtpPacket {
             .into();
 
         Self {
+            // first message is the ST_SYN message
             packet_type: (ST_SYN << 4) | 1,
             extension: 0,
             connection_id: 0x35,

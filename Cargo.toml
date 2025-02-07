@@ -5,7 +5,7 @@ edition = "2021"
 
 [workspace]
 members = [
-  "bencode",
+  "bencode", "tinymt",
   "torrent", "uttd",
 ]
 

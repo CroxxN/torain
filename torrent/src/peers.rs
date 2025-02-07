@@ -34,8 +34,6 @@ async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, Ut
     // let mut stream = stream.unwrap();
     let mut utp_stream = UtpStream::new(&url).await?;
     let utp_data = UtpPacket::new().as_bytes();
-    // println!("{:?}", utp_data);
-    println!("{:?}", url);
 
     let mut res = vec![0; 68];
     let mut utp_res = vec![0; 20];
@@ -53,7 +51,7 @@ async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, Ut
     println!("Got utp: {:?}", url);
 
     let stream = AsyncStream::new(&url).await?;
-    if utp_res[0] != 0 {
+    if utp_res[0] == 33 {
         println!("{:?}", utp_res);
         return Ok(stream);
     }
