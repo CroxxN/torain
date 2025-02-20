@@ -210,7 +210,7 @@ pub enum AsyncStreamType {
 impl<'a> AsyncStream {
     /// Create a new `AsyncStream` on provided `url`
     /// Default duration is `5` seconds
-    pub async fn new(url: &Url) -> Result<Self, UttdError> {
+    pub async fn handshake(url: &Url) -> Result<Self, UttdError> {
         let stream = tokio::time::timeout(
             // set timeout to 5 seconds
             Duration::from_secs(5),
@@ -218,7 +218,15 @@ impl<'a> AsyncStream {
         )
         .await?;
 
-        Ok(Self(stream?))
+        // tokio::select! {
+        //     bytes_read = stream.send(&handshake, &mut res) => {
+        //         if let Ok(br) = bytes_read {
+        //             if br == 68 && res[0] == 19{
+        //                 return Ok(stream);
+        //             }
+        //         }
+        //     }
+        Ok(Self(AsyncStreamType::TcpStream(stream?)))
     }
 
     /// Send `data` to the stream and receive in `res`
@@ -311,7 +319,7 @@ mod test {
     #[tokio::test]
     async fn test_async_stream() {
         let url = Url::new("https://google.com:80").unwrap();
-        let mut stream = AsyncStream::new(&url).await.unwrap();
+        let mut stream = AsyncStream::handshake(&url).await.unwrap();
         let mut res = vec![0; 8];
         stream.send(&[0], &mut res).await.unwrap();
         assert!(res[0] != 0);

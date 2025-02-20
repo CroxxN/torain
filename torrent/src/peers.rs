@@ -38,19 +38,11 @@ async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, Ut
     let mut res = vec![0; 68];
     let mut utp_res = vec![0; 20];
 
-    // tokio::select! {
-    //     bytes_read = stream.send(&handshake, &mut res) => {
-    //         if let Ok(br) = bytes_read {
-    //             if br == 68 && res[0] == 19{
-    //                 return Ok(stream);
-    //             }
-    //         }
-    //     }
     utp_stream.send(&utp_data, &mut utp_res).await;
 
     println!("Got utp: {:?}", url);
 
-    let stream = AsyncStream::new(&url).await?;
+    let stream = AsyncStream::handshake(&url).await?;
     if utp_res[0] == 33 {
         println!("{:?}", utp_res);
         return Ok(stream);
