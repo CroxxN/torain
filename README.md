@@ -1,10 +1,8 @@
-# `torain` is a cli bit-torrent client.
+# A bit-torrent client. From the ground up.
 
+It aims to be a complete torrent client with custom implementation of all useful libraries and tools. So far, torain contains a bencode serializer/deserializer, a sha1 hash library, a URL library, a HTTP/UDP request library, a Psuedo-Random Number Generator.
 
-## It aims to be a complete torrent client with custom implementation of all useful libraries and tools.
-## So far, torain contains a bencode serializer/deserializer, a sha1 hash library, a URL library, a HTTP/UDP request library, a Psuedo-Random Number Generator.
-
-### milestone
+### Milestone
 
 - [x] bencode parser
 - [x] parse .torrent file
