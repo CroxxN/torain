@@ -29,10 +29,10 @@ impl TinyMT {
     ///
     /// fn main(){
     ///     let rand = TinyMT::rand(1337);
-    ///     println!("{}", rand);
+    ///     println!("{}", rand.get_u32());
     /// }
     /// ```
-    pub fn rand(seed: u32) -> u32 {
+    pub fn rand(seed: u32) -> Self {
         let mut tinymt = Self::default();
 
         tinymt.mat1 = MAT1_PARAM;
@@ -57,7 +57,11 @@ impl TinyMT {
         }
 
         tinymt.next_state();
-        tinymt.temper()
+        tinymt
+    }
+
+    pub fn rng(&mut self) {
+        self.next_state();
     }
 
     fn next_state(&mut self) {
@@ -78,7 +82,7 @@ impl TinyMT {
         }
     }
 
-    fn temper(&mut self) -> u32 {
+    pub fn get_u32(&self) -> u32 {
         let mut t0 = self.status[3];
         let t1 = self.status[0] + (self.status[2] >> SH8);
 
@@ -99,13 +103,20 @@ mod test {
     #[test]
     fn rand() {
         let rand = TinyMT::rand(1);
-        assert_eq!(rand, 1255019984);
+        assert_eq!(rand.get_u32(), 1255019984);
+    }
+
+    #[test]
+    fn rand_again() {
+        let mut rand = TinyMT::rand(1);
+        rand.rng();
+        assert!(rand.get_u32() != 1255019984);
     }
 
     #[test]
     fn rand_prime() {
         // 7823 is prime
         let rand = TinyMT::rand(7823);
-        assert_eq!(rand, 4180267476);
+        assert_eq!(rand.get_u32(), 4180267476);
     }
 }
