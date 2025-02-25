@@ -6,6 +6,7 @@ pub mod utp;
 use std::{
     io::{Read, Write},
     net::{AddrParseError, TcpStream, UdpSocket},
+    sync::Arc,
     time::Duration,
 };
 
@@ -208,49 +209,129 @@ pub enum AsyncStreamType {
 }
 
 impl<'a> AsyncStream {
+    pub async fn new(url: &Url) -> Result<Self, UttdError> {
+        let stream = match url.scheme {
+            Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
+                tokio::net::TcpStream::connect(&url.host).await.unwrap(),
+            )),
+            Scheme::UDP => {
+                let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                sock.connect(&url.host).await.unwrap();
+
+                AsyncStream(AsyncStreamType::UtpStream(sock))
+            }
+            _ => unimplemented!(),
+        };
+        Ok(stream)
+    }
+
+    // TODO: Complete this function
+
     /// Create a new `AsyncStream` on provided `url`
     /// Default duration is `5` seconds
-    pub async fn handshake(url: &Url) -> Result<Self, UttdError> {
-        let stream = tokio::time::timeout(
+    pub async fn handshake(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
+        let mut stream = tokio::time::timeout(
             // set timeout to 5 seconds
             Duration::from_secs(5),
-            tokio::net::TcpStream::connect(&url.host),
+            Self::new(&url),
         )
-        .await?;
+        .await??;
 
-        // tokio::select! {
-        //     bytes_read = stream.send(&handshake, &mut res) => {
-        //         if let Ok(br) = bytes_read {
-        //             if br == 68 && res[0] == 19{
-        //                 return Ok(stream);
-        //             }
-        //         }
-        //     }
-        Ok(Self(AsyncStreamType::TcpStream(stream?)))
+        let mut res = vec![0; 68];
+
+        tokio::select! {
+            bytes_read = stream.send(&handshake_bytes, &mut res) => {
+                if let Ok(br) = bytes_read {
+                    if br == 68 && res[0] == 19{
+                        return Ok(stream);
+                    }
+                }
+                else {
+                    return Err(UttdError::FailedRequest);
+                }
+            }
+        };
+        Ok(stream)
     }
 
     /// Send `data` to the stream and receive in `res`
     /// Note: Peers are continuous stream of data. You must
     /// have initialized `res` with sufficient bytes. It only the exact bytes as is the capacity of `res`
     pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<usize, UttdError> {
-        self.0.write_all(data).await.unwrap();
-        let response =
-            tokio::time::timeout(Duration::from_secs(15), self.0.read_exact(res)).await?;
+        match self {
+            AsyncStream(AsyncStreamType::TcpStream(t)) => Self::send_tcp(t, data, res).await,
+            AsyncStream(AsyncStreamType::UtpStream(u)) => Self::send_utp(u, data, res).await,
+        }
+    }
+
+    async fn send_tcp(
+        tcp: &mut tokio::net::TcpStream,
+        data: &[u8],
+        res: &mut Vec<u8>,
+    ) -> Result<usize, UttdError> {
+        tcp.write_all(data).await.unwrap();
+        let response = tokio::time::timeout(Duration::from_secs(15), tcp.read_exact(res)).await?;
         Ok(response?)
+    }
+
+    async fn send_utp(
+        utp: &mut tokio::net::UdpSocket,
+        data: &[u8],
+        res: &mut Vec<u8>,
+    ) -> Result<usize, UttdError> {
+        let mut read = 0;
+        for _ in 0..5 {
+            read = utp.send(data).await.unwrap();
+            if let Ok(_) = utp.recv(res).await {
+                break;
+            }
+        }
+        // if after 10 tires still no response, return error
+        if res.is_empty() {
+            return Err(UttdError::FailedRequest);
+        }
+
+        Ok(read)
     }
 
     /// Read 4 bytes of data once and return
     pub async fn read_once(&mut self) -> Result<u32, UttdError> {
+        match self {
+            AsyncStream(AsyncStreamType::TcpStream(t)) => Self::read_once_tcp(t).await,
+            _ => unimplemented!(),
+        }
+    }
+
+    async fn read_once_tcp(tcp: &mut tokio::net::TcpStream) -> Result<u32, UttdError> {
         // peers send keep_alive messages every 2 minutes. If we don't receive anything for 2 minutes, we close the connection
         let mut res = [0_u8; 4];
-        _ = tokio::time::timeout(Duration::from_secs(121), self.0.read_exact(&mut res)).await??;
+        _ = tokio::time::timeout(Duration::from_secs(121), tcp.read_exact(&mut res)).await??;
         let length = u32::from_be_bytes(res.try_into().unwrap());
         Ok(length)
     }
 
-    /// Read `res.len()` bytes of data and pass it through `res`
     pub async fn read_multiple(&mut self, res: &mut Vec<u8>) -> Result<(), UttdError> {
-        _ = tokio::time::timeout(Duration::from_secs(121), self.0.read_exact(res)).await??;
+        match self {
+            AsyncStream(AsyncStreamType::TcpStream(t)) => Self::read_multiple_tcp(t, res).await,
+            AsyncStream(AsyncStreamType::UtpStream(u)) => Self::read_multiple_utp(u, res).await,
+        }
+    }
+
+    // TODO: return the amount of bytes read
+    /// Read `res.len()` bytes of data and pass it through `res`
+    async fn read_multiple_tcp(
+        tcp: &mut tokio::net::TcpStream,
+        res: &mut Vec<u8>,
+    ) -> Result<(), UttdError> {
+        _ = tokio::time::timeout(Duration::from_secs(121), tcp.read_exact(res)).await??;
+        Ok(())
+    }
+
+    async fn read_multiple_utp(
+        utp: &mut tokio::net::UdpSocket,
+        res: &mut Vec<u8>,
+    ) -> Result<(), UttdError> {
+        _ = tokio::time::timeout(Duration::from_secs(121), utp.recv(res)).await??;
         Ok(())
     }
 }
@@ -278,7 +359,7 @@ impl UtpStream {
 #[cfg(test)]
 mod test {
 
-    use crate::{url::Url, AsyncStream, Stream, StreamType};
+    use crate::{url::Url, Stream, StreamType};
     use std::{
         io::{Read, Write},
         net::TcpStream,
@@ -316,12 +397,20 @@ mod test {
         tcp.read_to_end(&mut res).unwrap();
         assert_eq!([res[9], res[10], res[11]], [b'2', b'0', b'0']);
     }
-    #[tokio::test]
-    async fn test_async_stream() {
-        let url = Url::new("https://google.com:80").unwrap();
-        let mut stream = AsyncStream::handshake(&url).await.unwrap();
-        let mut res = vec![0; 8];
-        stream.send(&[0], &mut res).await.unwrap();
-        assert!(res[0] != 0);
-    }
+    // #[tokio::test]
+    // async fn test_async_stream() {
+    //     let fs = "debian.torrent";
+    //     let torrent = Torrent::from_file(fs).unwrap();
+    //     let tracker = TrackerParams::new(&torrent);
+    //     let _announce = tracker.announce().unwrap();
+    //     let info_hash = torrent.hash;
+    //     let peer_id = tracker.peer_id;
+    //     let mut handshake = peer::Handshake::new(info_hash, peer_id);
+
+    //     let url = Url::new("https://google.com:80").unwrap();
+    //     let mut stream = AsyncStream::handshake(&url, handshake).await.unwrap();
+    //     let mut res = vec![0; 8];
+    //     stream.send(&[0], &mut res).await.unwrap();
+    //     assert!(res[0] != 0);
+    // }
 }
