@@ -209,20 +209,34 @@ pub enum AsyncStreamType {
 }
 
 impl<'a> AsyncStream {
-    pub async fn new(url: &Url) -> Result<Self, UttdError> {
-        let stream = match url.scheme {
-            Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
-                tokio::net::TcpStream::connect(&url.host).await.unwrap(),
-            )),
-            Scheme::UDP => {
-                let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                sock.connect(&url.host).await.unwrap();
+    // NOTE: handshake here?
+    pub async fn new(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
+        // ERROR: Can't do this because there is no scheme
+        // let stream = match url.scheme {
+        //     Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
+        //         tokio::net::TcpStream::connect(&url.host).await.unwrap(),
+        //     )),
+        //     Scheme::UDP => {
+        //         let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        //         sock.connect(&url.host).await.unwrap();
 
-                AsyncStream(AsyncStreamType::UtpStream(sock))
+        //         AsyncStream(AsyncStreamType::UtpStream(sock))
+        //     }
+        //     _ => unimplemented!(),
+        // };
+        // Ok(stream)
+
+        tokio::select! {
+            stream = tokio::net::TcpStream::connect(&url.host) => {
+                let mut res = vec![0; 68];
+                let result = stream?.write_all(&handshake_bytes, &mut res);
             }
-            _ => unimplemented!(),
-        };
-        Ok(stream)
+
+
+
+        }
+
+        Err(UttdError::FailedRequest)
     }
 
     // TODO: Complete this function

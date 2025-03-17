@@ -40,11 +40,10 @@ async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, Ut
 
     // utp_stream.send(&utp_data, &mut utp_res).await;
     utp_stream.send(&utp_data, &mut utp_res).await;
-    println!("Got utp: {:?}", url);
 
     let stream = AsyncStream::handshake(&url, handshake).await?;
+
     if utp_res[0] == 33 {
-        println!("{:?}", utp_res);
         return Ok(stream);
     }
     // }
@@ -135,6 +134,7 @@ mod test {
 
     use crate::{peers::Handshake, torrent::Torrent, tracker::TrackerParams};
 
+    // WARNING: This may fail
     #[test]
     fn connect_test() {
         let peer = "193.5.17.149:31337";
