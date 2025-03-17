@@ -9,8 +9,4 @@ pub struct Node {
 pub struct RTable {}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // #[test]
-}
+mod tests {}

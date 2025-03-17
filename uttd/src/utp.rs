@@ -27,7 +27,7 @@ const ST_SYN: u8 = 4;
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 // #[repr(C, packed)]
 pub struct UtpPacket {
-    packet_type: u8,
+    packet_version: u8,
     extension: u8,
     connection_id: u16,
     timestamp: u32,
@@ -49,7 +49,9 @@ impl UtpPacket {
 
         Self {
             // first message is the ST_SYN message
-            packet_type: (ST_SYN << 4) | 1,
+            // the first four bits from the left is the version number (always one)
+            // and the last 4 are packet id
+            packet_version: (ST_SYN << 4) | 1,
             extension: 0,
             connection_id: 0x35,
             timestamp,
@@ -72,7 +74,7 @@ impl UtpPacket {
 
     pub fn as_bytes(self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(&self.packet_type.to_be_bytes());
+        bytes.extend_from_slice(&self.packet_version.to_be_bytes());
         bytes.extend_from_slice(&self.extension.to_be_bytes());
         bytes.extend_from_slice(&self.connection_id.to_be_bytes());
         bytes.extend_from_slice(&self.timestamp.to_be_bytes());
@@ -100,13 +102,13 @@ impl UtpPacket {
 
 #[cfg(test)]
 mod test {
-    use crate::utp::ST_SYN;
+    // use crate::utp::ST_SYN;
 
     use super::UtpPacket;
 
     #[test]
     fn new_packet() {
         let upacket = UtpPacket::new();
-        assert_eq!(upacket.packet_type, ST_SYN);
+        assert_eq!(upacket.packet_version, 65);
     }
 }

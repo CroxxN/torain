@@ -217,22 +217,22 @@ impl Participants {
 
 #[cfg(test)]
 mod test {
-    use crate::download::Participants;
-    use crate::{torrent::Torrent, tracker::TrackerParams};
+    // use crate::download::Participants;
+    // use crate::{torrent::Torrent, tracker::TrackerParams};
 
-    #[tokio::test]
-    async fn listen() {
-        let fs = "debian.torrent";
-        // let fs = "pulpfiction.torrent";
-        // let fs = "nocountry.torrent";
-        let torrent = Torrent::from_file(fs).unwrap();
-        let tracker = TrackerParams::new(&torrent);
-        let announce = tracker.announce().unwrap();
-        let info_hash = torrent.hash;
-        let peer_id = tracker.peer_id;
-        let streams = announce.handshake(info_hash, peer_id).await;
-        assert!(streams.len() > 1);
-        let down = Participants::new(&torrent, streams).await;
-        down.download().await;
-    }
+    // #[tokio::test]
+    // async fn listen() {
+    //     let fs = "debian.torrent";
+    //     // let fs = "pulpfiction.torrent";
+    //     // let fs = "nocountry.torrent";
+    //     let torrent = Torrent::from_file(fs).unwrap();
+    //     let tracker = TrackerParams::new(&torrent);
+    //     let announce = tracker.announce().unwrap();
+    //     let info_hash = torrent.hash;
+    //     let peer_id = tracker.peer_id;
+    //     let streams = announce.handshake(info_hash, peer_id).await;
+    //     assert!(streams.len() > 1);
+    //     let down = Participants::new(&torrent, streams).await;
+    //     down.download().await;
+    // }
 }

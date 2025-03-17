@@ -468,21 +468,20 @@ mod test {
     //     stream.send(&[0], &mut res).await.unwrap();
     //     assert!(res[0] != 0);
     // }
+
+    // IMPORTANT: Can't depend on this specific peer being alive to may fail
     #[tokio::test]
     async fn test_utp_handshake() {
         let mut stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
-        stream.connect("127.141.94.231:47598").await.unwrap();
+        stream.connect("37.228.205.62:15223").await.unwrap();
 
         let bytes = UtpPacket::new().as_bytes();
         println!("{:?}", bytes);
         let mut res = vec![0; 20];
 
-        let br = AsyncStream::send_utp(&mut stream, &bytes, &mut res)
+        let _ = AsyncStream::send_utp(&mut stream, &bytes, &mut res)
             .await
             .unwrap();
-
-        println!("Gets here with: br: {} & res: {}", br, res[0]);
-
         assert_eq!(res[0], 33);
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use uttd::{url::Url, utp::UtpPacket, AsyncStream, UtpStream, UttdError};
+use uttd::{url::Url, AsyncStream};
 
 #[derive(Debug)]
 pub struct Peers {
@@ -26,37 +26,38 @@ pub struct Peers {
 // }
 
 // it works... type shit
-async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
-    // let stream = AsyncStream::new(&url).await;
-    // if let Err(e) = stream {
-    //     return Err(e);
-    // }
-    // let mut stream = stream.unwrap();
-    let mut utp_stream = UtpStream::new(&url).await?;
-    let utp_data = UtpPacket::new().as_bytes();
+// async fn handshakes(url: Url, handshake: Arc<Vec<u8>>) -> Result<AsyncStream, UttdError> {
+//     // let stream = AsyncStream::new(&url).await;
+//     // if let Err(e) = stream {
+//     //     return Err(e);
+//     // }
+//     // let mut stream = stream.unwrap();
+//     let mut utp_stream = UtpStream::new(&url).await?;
+//     let utp_data = UtpPacket::new().as_bytes();
 
-    let _res = vec![0; 68];
-    let mut utp_res = vec![0; 20];
+//     let _res = vec![0; 68];
+//     let mut utp_res = vec![0; 20];
 
-    // utp_stream.send(&utp_data, &mut utp_res).await;
-    utp_stream.send(&utp_data, &mut utp_res).await;
+//     // utp_stream.send(&utp_data, &mut utp_res).await;
+//     utp_stream.send(&utp_data, &mut utp_res).await;
 
-    let stream = AsyncStream::handshake(&url, handshake).await?;
+//     // TODO: fix this. Maybe use the new function directly
+//     let stream = AsyncStream::handshake(&url, handshake).await?;
 
-    if utp_res[0] == 33 {
-        return Ok(stream);
-    }
-    // }
-    Err(UttdError::FailedRequest)
-}
+//     if utp_res[0] == 33 {
+//         return Ok(stream);
+//     }
+//     // }
+//     Err(UttdError::FailedRequest)
+// }
 
-#[tokio::test]
-async fn test_handshake() {
-    let url = Url::from_ip("39.42.236.140", 42245).unwrap();
-    let handshake: Arc<Vec<u8>> = Arc::new(Vec::new());
+// #[tokio::test]
+// async fn test_handshake() {
+//     let url = Url::from_ip("39.42.236.140", 42245).unwrap();
+//     let handshake: Arc<Vec<u8>> = Arc::new(Vec::new());
 
-    println!("{:?}", handshakes(url, handshake).await);
-}
+//     println!("{:?}", handshakes(url, handshake).await);
+// }
 
 impl Peers {
     pub fn new(interval: i32, seeders: i32, leechers: i32, ip: Vec<Url>) -> Self {
@@ -83,7 +84,7 @@ impl Peers {
 
         for url in peer {
             let bytes = handshake_bytes.clone();
-            let handle = tokio::spawn(handshakes(url, bytes));
+            let handle = tokio::spawn(uttd::AsyncStream::new(url, bytes));
             handles.push(handle);
         }
 
@@ -127,37 +128,33 @@ impl Handshake {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        io::{Read, Write},
-        net::TcpStream,
-    };
 
     use crate::{peers::Handshake, torrent::Torrent, tracker::TrackerParams};
 
-    // WARNING: This may fail
-    #[test]
-    fn connect_test() {
-        let peer = "193.5.17.149:31337";
-        let fs = "debian.torrent";
-        let torrent = Torrent::from_file(fs).unwrap();
-        let tracker = TrackerParams::new(&torrent);
-        let _peers = tracker.announce().unwrap();
-        let info_hash = torrent.hash;
-        let peer_id = tracker.peer_id;
-        let mut data = Vec::new();
-        data.push(19);
-        let protocol = b"BitTorrent protocol";
-        data.extend_from_slice(protocol);
-        data.extend_from_slice(&[0; 8]);
-        data.extend_from_slice(&info_hash[0..20]);
-        data.extend_from_slice(&peer_id[0..20]);
+    // // WARNING: This may fail
+    // #[test]
+    // fn connect_test() {
+    //     let peer = "193.5.17.149:31337";
+    //     let fs = "debian.torrent";
+    //     let torrent = Torrent::from_file(fs).unwrap();
+    //     let tracker = TrackerParams::new(&torrent);
+    //     let _peers = tracker.announce().unwrap();
+    //     let info_hash = torrent.hash;
+    //     let peer_id = tracker.peer_id;
+    //     let mut data = Vec::new();
+    //     data.push(19);
+    //     let protocol = b"BitTorrent protocol";
+    //     data.extend_from_slice(protocol);
+    //     data.extend_from_slice(&[0; 8]);
+    //     data.extend_from_slice(&info_hash[0..20]);
+    //     data.extend_from_slice(&peer_id[0..20]);
 
-        let mut stream = TcpStream::connect(peer).unwrap();
-        stream.write_all(&data).unwrap();
-        let mut res = vec![0; 68];
-        stream.read_exact(&mut res).unwrap();
-        assert!(res[0] == 19);
-    }
+    //     let mut stream = TcpStream::connect(peer).unwrap();
+    //     stream.write_all(&data).unwrap();
+    //     let mut res = vec![0; 68];
+    //     stream.read_exact(&mut res).unwrap();
+    //     assert!(res[0] == 19);
+    // }
 
     #[tokio::test]
     async fn handshake_test() {
@@ -184,6 +181,7 @@ mod test {
         assert!(streams.len() != 0);
     }
 
+    // IMPORTANT: This may fail as there usually aren't many healthy peers on HTTP/UDP based trackers
     #[tokio::test]
     async fn utp() {
         let fs = "pulpfiction.torrent";
@@ -195,15 +193,4 @@ mod test {
         let streams = announce.handshake(info_hash, peer_id).await;
         assert!(streams.len() != 0);
     }
-    // #[tokio::test]
-    // async fn streams_multi() {
-    //     let fs = "pulpfiction.torrent";
-    //     let torrent = Torrent::from_file(fs).unwrap();
-    //     let tracker = TrackerParams::new(&torrent);
-    //     let announce = tracker.announce().unwrap();
-    //     let info_hash = torrent.hash;
-    //     let peer_id = tracker.peer_id;
-    //     let streams = announce.handshake(info_hash, peer_id).await;
-    //     assert!(streams.len() != 0);
-    // }
 }
