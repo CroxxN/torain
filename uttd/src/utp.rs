@@ -1,8 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tokio::net::UdpSocket;
+// use tokio::net::UdpSocket;
 
-use crate::url::Url;
+// use crate::url::Url;
 
 const ST_DATA: u8 = 0;
 const ST_FIN: u8 = 1;
@@ -80,23 +80,23 @@ impl UtpPacket {
         bytes.extend_from_slice(&self.window_size.to_be_bytes());
         bytes.extend_from_slice(&self.seq_number.to_be_bytes());
         bytes.extend_from_slice(&self.ack_number.to_be_bytes());
-        println!("{}", bytes.len());
+        // println!("{}", bytes.len());
         bytes
     }
 }
 
-pub struct UtpSocket {
-    pub socket: UdpSocket,
-}
+// pub struct UtpSocket {
+//     pub socket: UdpSocket,
+// }
 
-impl UtpSocket {
-    pub async fn new(url: &Url) -> Self {
-        let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-        sock.connect(&url.host).await.unwrap();
+// impl UtpSocket {
+//     pub async fn new(url: &Url) -> Self {
+//         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+//         sock.connect(&url.host).await.unwrap();
 
-        Self { socket: sock }
-    }
-}
+//         Self { socket: sock }
+//     }
+// }
 
 #[cfg(test)]
 mod test {

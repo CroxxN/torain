@@ -13,6 +13,8 @@ use std::{
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::{Scheme, Url};
 
+use utp::UtpPacket;
+
 #[derive(Debug)]
 pub enum UttdError {
     IpParseFail(AddrParseError),
@@ -210,7 +212,8 @@ pub enum AsyncStreamType {
 
 impl<'a> AsyncStream {
     // NOTE: handshake here?
-    pub async fn new(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
+    // NOTE: redesign this to not pass handshake bytes. Just create it in the `handshake_tcp` function
+    pub async fn new(url: Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
         // ERROR: Can't do this because there is no scheme
         // let stream = match url.scheme {
         //     Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
@@ -227,15 +230,53 @@ impl<'a> AsyncStream {
         // Ok(stream)
 
         tokio::select! {
-            stream = tokio::net::TcpStream::connect(&url.host) => {
-                let mut res = vec![0; 68];
-                let result = stream?.write_all(&handshake_bytes, &mut res);
+            res = Self::handshake_tcp(&url, handshake_bytes.clone()) => {
+                res
+            }
+
+            res = Self::handshake_utp(&url) => {
+                res
             }
 
 
+        }
+    }
 
+    async fn handshake_tcp(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
+        let mut stream = tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::net::TcpStream::connect(&url.host),
+        )
+        .await??;
+
+        let mut res = vec![0; 68];
+        // let result = stream?.write_all(&handshake_bytes, &mut res);
+        let br = Self::send_tcp(&mut stream, &handshake_bytes, &mut res).await?;
+
+        if br == 68 && res[0] == 19 {
+            return Ok(AsyncStream(AsyncStreamType::TcpStream(stream)));
+        } else {
+            return Err(UttdError::FailedRequest);
+        }
+    }
+
+    async fn handshake_utp(url: &Url) -> Result<Self, UttdError> {
+        let mut stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+        stream.connect(&url.host).await?;
+
+        let bytes = UtpPacket::new().as_bytes();
+        let mut res = vec![0; 20];
+
+        let br = Self::send_utp(&mut stream, &bytes, &mut res).await?;
+
+        println!("Gets here with: br: {} & res: {}", br, res[0]);
+        println!("{:?}", url);
+
+        if res[0] == 33 {
+            return Ok(AsyncStream(AsyncStreamType::UtpStream(stream)));
         }
 
+        // TODO: remove this line
         Err(UttdError::FailedRequest)
     }
 
@@ -243,30 +284,30 @@ impl<'a> AsyncStream {
 
     /// Create a new `AsyncStream` on provided `url`
     /// Default duration is `5` seconds
-    pub async fn handshake(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
-        let mut stream = tokio::time::timeout(
-            // set timeout to 5 seconds
-            Duration::from_secs(5),
-            Self::new(&url),
-        )
-        .await??;
+    // pub async fn handshake(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
+    //     let mut stream = tokio::time::timeout(
+    //         // set timeout to 5 seconds
+    //         Duration::from_secs(5),
+    //         Self::new(&url),
+    //     )
+    //     .await??;
 
-        let mut res = vec![0; 68];
+    //     let mut res = vec![0; 68];
 
-        tokio::select! {
-            bytes_read = stream.send(&handshake_bytes, &mut res) => {
-                if let Ok(br) = bytes_read {
-                    if br == 68 && res[0] == 19{
-                        return Ok(stream);
-                    }
-                }
-                else {
-                    return Err(UttdError::FailedRequest);
-                }
-            }
-        };
-        Ok(stream)
-    }
+    //     tokio::select! {
+    //         bytes_read = stream.send(&handshake_bytes, &mut res) => {
+    //             if let Ok(br) = bytes_read {
+    //                 if br == 68 && res[0] == 19{
+    //                     return Ok(stream);
+    //                 }
+    //             }
+    //             else {
+    //                 return Err(UttdError::FailedRequest);
+    //             }
+    //         }
+    //     };
+    //     Ok(stream)
+    // }
 
     /// Send `data` to the stream and receive in `res`
     /// Note: Peers are continuous stream of data. You must
@@ -296,7 +337,7 @@ impl<'a> AsyncStream {
         let mut read = 0;
         for _ in 0..5 {
             read = utp.send(data).await.unwrap();
-            if let Ok(_) = utp.recv(res).await {
+            if let Ok(_) = tokio::time::timeout(Duration::from_secs(10), utp.recv(res)).await? {
                 break;
             }
         }
@@ -373,7 +414,7 @@ impl UtpStream {
 #[cfg(test)]
 mod test {
 
-    use crate::{url::Url, Stream, StreamType};
+    use crate::{url::Url, utp::UtpPacket, AsyncStream, Stream, StreamType};
     use std::{
         io::{Read, Write},
         net::TcpStream,
@@ -427,4 +468,21 @@ mod test {
     //     stream.send(&[0], &mut res).await.unwrap();
     //     assert!(res[0] != 0);
     // }
+    #[tokio::test]
+    async fn test_utp_handshake() {
+        let mut stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        stream.connect("127.141.94.231:47598").await.unwrap();
+
+        let bytes = UtpPacket::new().as_bytes();
+        println!("{:?}", bytes);
+        let mut res = vec![0; 20];
+
+        let br = AsyncStream::send_utp(&mut stream, &bytes, &mut res)
+            .await
+            .unwrap();
+
+        println!("Gets here with: br: {} & res: {}", br, res[0]);
+
+        assert_eq!(res[0], 33);
+    }
 }
