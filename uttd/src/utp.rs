@@ -1,5 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use tinymt::TinyMT;
+
 // use tokio::net::UdpSocket;
 
 // use crate::url::Url;
@@ -53,7 +55,8 @@ impl UtpPacket {
             // and the last 4 are packet id
             packet_version: (ST_SYN << 4) | 1,
             extension: 0,
-            connection_id: 0x35,
+            // "random" connection id
+            connection_id: TinyMT::rand(1).get_u32() as u16,
             timestamp,
             timestamp_difference: 0,
             window_size: 0xf000,

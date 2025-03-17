@@ -252,6 +252,13 @@ impl<'a> AsyncStream {
         let mut res = vec![0; 68];
         // let result = stream?.write_all(&handshake_bytes, &mut res);
         let br = Self::send_tcp(&mut stream, &handshake_bytes, &mut res).await?;
+        println!("In: {:?}", handshake_bytes);
+        println!("Res: {:?}", res);
+        let mut dht_msg = vec![0; 4];
+
+        _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
+        // let dht_byte = Self::read_once_tcp(&mut stream).await?;
+        println!("{:?}", dht_msg);
 
         if br == 68 && res[0] == 19 {
             return Ok(AsyncStream(AsyncStreamType::TcpStream(stream)));
@@ -269,8 +276,8 @@ impl<'a> AsyncStream {
 
         let br = Self::send_utp(&mut stream, &bytes, &mut res).await?;
 
-        println!("Gets here with: br: {} & res: {}", br, res[0]);
-        println!("{:?}", url);
+        // println!("Gets here with: br: {} & res: {}", br, res[0]);
+        // println!("{:?}", url);
 
         if res[0] == 33 {
             return Ok(AsyncStream(AsyncStreamType::UtpStream(stream)));

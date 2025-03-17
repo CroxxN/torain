@@ -111,10 +111,14 @@ pub struct Handshake {
 
 impl Handshake {
     pub fn new(info_hash: [u8; 20], peer_id: [u8; 20]) -> Self {
+        // Setting the last bit of the reserved field to indicate we support DHT
+        let mut reserved = [0u8; 8];
+        // TODO: fix
+        reserved[7] |= 0x01;
         Self {
             len: 19,
             protocol: *b"BitTorrent protocol",
-            reserved: [0; 8],
+            reserved,
             info_hash,
             peer_id,
         }
@@ -129,32 +133,41 @@ impl Handshake {
 #[cfg(test)]
 mod test {
 
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+    };
+
     use crate::{peers::Handshake, torrent::Torrent, tracker::TrackerParams};
 
     // // WARNING: This may fail
-    // #[test]
-    // fn connect_test() {
-    //     let peer = "193.5.17.149:31337";
-    //     let fs = "debian.torrent";
-    //     let torrent = Torrent::from_file(fs).unwrap();
-    //     let tracker = TrackerParams::new(&torrent);
-    //     let _peers = tracker.announce().unwrap();
-    //     let info_hash = torrent.hash;
-    //     let peer_id = tracker.peer_id;
-    //     let mut data = Vec::new();
-    //     data.push(19);
-    //     let protocol = b"BitTorrent protocol";
-    //     data.extend_from_slice(protocol);
-    //     data.extend_from_slice(&[0; 8]);
-    //     data.extend_from_slice(&info_hash[0..20]);
-    //     data.extend_from_slice(&peer_id[0..20]);
+    #[test]
+    fn connect_test() {
+        let peer = "112.156.141.234:4681";
 
-    //     let mut stream = TcpStream::connect(peer).unwrap();
-    //     stream.write_all(&data).unwrap();
-    //     let mut res = vec![0; 68];
-    //     stream.read_exact(&mut res).unwrap();
-    //     assert!(res[0] == 19);
-    // }
+        let fs = "pulpfiction.torrent";
+        let torrent = Torrent::from_file(fs).unwrap();
+        let tracker = TrackerParams::new(&torrent);
+        let _peers = tracker.announce().unwrap();
+        let info_hash = torrent.hash;
+        let peer_id = tracker.peer_id;
+        let mut data = Vec::new();
+        data.push(19);
+        let protocol = b"BitTorrent protocol";
+        data.extend_from_slice(protocol);
+        data.extend_from_slice(&[0; 8]);
+        // data.extend_from_slice(&[0; 7]);
+        // data.extend_from_slice(&[0x01]);
+        data.extend_from_slice(&info_hash[0..20]);
+        data.extend_from_slice(&peer_id[0..20]);
+
+        let mut stream = TcpStream::connect(peer).unwrap();
+        stream.write_all(&data).unwrap();
+        let mut res = vec![0; 68];
+        stream.read_exact(&mut res).unwrap();
+
+        assert!(res[0] == 19);
+    }
 
     #[tokio::test]
     async fn handshake_test() {
