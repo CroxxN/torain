@@ -115,6 +115,7 @@ impl Handshake {
         let mut reserved = [0u8; 8];
         // TODO: fix
         reserved[7] |= 0x01;
+        reserved[5] |= 0x10;
         Self {
             len: 19,
             protocol: *b"BitTorrent protocol",

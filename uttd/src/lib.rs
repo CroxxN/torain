@@ -252,13 +252,63 @@ impl<'a> AsyncStream {
         let mut res = vec![0; 68];
         // let result = stream?.write_all(&handshake_bytes, &mut res);
         let br = Self::send_tcp(&mut stream, &handshake_bytes, &mut res).await?;
+
+        // Though the docs proclaim that "all current implmentation" of the bittorrent protocol
+        // set all the reserved bytes to 0, most peer support atleast a few extentions, most
+        // torrent clients also modify some reserved bytes. `reserved[5]` and `reserved[7]` is usually set.
+        // `reserved[5]` == 0x10 indicates that this peer actually supports the extended bittorrent protocol,
+        // while reserved[7] == 0x04 indicates the peer suppor the fast extention. `reserved[7]` == 0x01 indicates
+        // that the peer supports DHT nodes. Combining both, `reserved[7]` == 0x05 means that the peer supports
+        // both the fast extention and the DHT extention.
+        //
+        // As such, the response reserved bytes from a received packet generally looks like this:
+        //  0  1  2  3  4  5   6  7
+        // [0, 0, 0, 0, 0, 16, 0, 5]
+
         println!("In: {:?}", handshake_bytes);
         println!("Res: {:?}", res);
-        let mut dht_msg = vec![0; 4];
 
+        // IMPORTANT: this checks if the peer supports the extended bittorret protocol
+        // https://www.bittorrent.org/beps/bep_0010.html
+        // Peers announce to each other whether or not they support the extended protocol by setting the
+        // reserved[5](0-indexed) byte to 0x10 (16 in decimal)
+
+        // if res[25] & 0x10 != 0 {
+        //     println!("Found Extended",);
+        // }
+        //
+
+        // [0, 0, 0, 197]
+        // [20, 0, 100, 49, 50, 58, 99, 111, 109, 112, 108, 101, 116, 101, 95, 97, 103, 111, 105, 50, 54, 49, 56, 101, 49, 58, 109, 100]
+        //  |
+        //  |
+        //  |
+        //  |
+        //  This is the extended byte message.
+        // TODO: figure out the message
+        // https://www.bittorrent.org/beps/bep_0010.html
+
+        // TODO: restruct these elsewhere
+        let mut dht_msg_len = vec![0; 4];
+
+        _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;
+        let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..5].try_into().unwrap());
+
+        let mut dht_msg = vec![0_u8; dht_msg_len as usize];
         _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
-        // let dht_byte = Self::read_once_tcp(&mut stream).await?;
-        println!("{:?}", dht_msg);
+
+        // `dht_msg` is u8-bytes of bencoded dictionary with various keys
+        // see more: https://www.bittorrent.org/beps/bep_0010.html
+
+        // [0, 0, 0, 197]
+        // [20, 0, 100, 49, 50, 58, 99, 111, 109, 112, 108, 101, 116, 101, 95, 97, 103, 111, 105, 50, 54, 49, 56, 101, 49, 58, 109, 100]
+        // println!(
+        //     "Initial Value len: {}",
+        //     u32::from_be_bytes([dht_msg[0], dht_msg[1], dht_msg[2], dht_msg[3]])
+        // );
+        //
+        //
+        // -----------------------------------------------------------------------------------------------------------------------------------
 
         if br == 68 && res[0] == 19 {
             return Ok(AsyncStream(AsyncStreamType::TcpStream(stream)));

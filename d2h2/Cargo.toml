@@ -3,4 +3,8 @@ name = "d2h2"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[dependencies.tinymt]
+path = "../tinymt"
+
+[dependencies.uttd]
+path = "../uttd"
