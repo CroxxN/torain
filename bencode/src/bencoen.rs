@@ -5,6 +5,35 @@
 use crate::bencode::BTypes;
 use std::collections::BTreeMap;
 
+#[derive(Debug)]
+pub struct Bencoen {
+    inner: BTypes,
+}
+
+impl Bencoen {
+    pub fn new(key: String, value: BTypes) -> Self {
+        let mut dict: BTreeMap<String, BTypes> = BTreeMap::new();
+        dict.insert(key, value);
+        Self {
+            inner: BTypes::DICT(dict),
+        }
+    }
+
+    pub fn add(&mut self, key: String, value: BTypes) {
+        if let BTypes::DICT(d) = &mut self.inner {
+            d.insert(key, value);
+        }
+    }
+
+    pub fn get_inner(self) -> BTypes {
+        self.inner
+    }
+
+    pub fn finalize(&self) -> Vec<u8> {
+        ser(&self.inner)
+    }
+}
+
 /// Serialize rust types into bencode
 pub fn ser(de: &BTypes) -> Vec<u8> {
     match de {
@@ -68,7 +97,7 @@ mod test {
         bencoen::{ser_dict, ser_list, ser_string},
     };
 
-    use super::ser;
+    use super::{ser, Bencoen};
 
     #[test]
     fn int() {
@@ -121,5 +150,18 @@ mod test {
     fn raw_bin() {
         let str = BTypes::BSTRING("þ".to_owned().into_bytes());
         assert_eq!(vec![b'2', b':', 195, 190], ser(&str));
+    }
+
+    #[test]
+    fn serialize() {
+        let ben = Bencoen::new("h".to_string(), BTypes::INT(16));
+
+        let res = ben.get_inner();
+
+        let mut map: BTreeMap<String, BTypes> = BTreeMap::new();
+
+        map.insert("h".to_string(), BTypes::INT(16));
+
+        assert_eq!(res, BTypes::DICT(map));
     }
 }
