@@ -84,7 +84,7 @@ impl Peers {
 
         for url in peer {
             let bytes = handshake_bytes.clone();
-            let handle = tokio::spawn(uttd::AsyncStream::new(url, bytes));
+            let handle = tokio::spawn(uttd::AsyncStream::new_with_handshake(url, bytes));
             handles.push(handle);
         }
 
