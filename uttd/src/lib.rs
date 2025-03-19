@@ -6,14 +6,11 @@ pub mod utp;
 use std::{
     io::{Read, Write},
     net::{AddrParseError, TcpStream, UdpSocket},
-    sync::Arc,
     time::Duration,
 };
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::{Scheme, Url};
-
-use utp::UtpPacket;
 
 #[derive(Debug)]
 pub enum UttdError {
@@ -202,7 +199,9 @@ impl Stream {
 /// Async version of `Stream`
 /// Holds a TcpStream underneth
 #[derive(Debug)]
-pub struct AsyncStream(AsyncStreamType);
+pub struct AsyncStream {
+    pub async_stream_type: AsyncStreamType,
+}
 
 #[derive(Debug)]
 pub enum AsyncStreamType {
@@ -219,173 +218,51 @@ impl<'a> AsyncStream {
                     tokio::net::TcpStream::connect(&url.host),
                 )
                 .await??;
-                Ok(AsyncStream(AsyncStreamType::TcpStream(stream)))
+                Ok(AsyncStream {
+                    async_stream_type: AsyncStreamType::TcpStream(stream),
+                })
             }
             Scheme::UDP => {
                 let stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
                 stream.connect(&url.host).await?;
-                Ok(AsyncStream(AsyncStreamType::UtpStream(stream)))
+                Ok(AsyncStream {
+                    async_stream_type: AsyncStreamType::UtpStream(stream),
+                })
             }
             _ => unimplemented!(),
         }
     }
-    // NOTE: handshake here?
-    // NOTE: redesign this to not pass handshake bytes. Just create it in the `handshake_tcp` function
-    pub async fn new_with_handshake(
-        url: Url,
-        handshake_bytes: Arc<Vec<u8>>,
-    ) -> Result<Self, UttdError> {
-        // ERROR: Can't do this because there is no scheme
-        // let stream = match url.scheme {
-        //     Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
-        //         tokio::net::TcpStream::connect(&url.host).await.unwrap(),
-        //     )),
-        //     Scheme::UDP => {
-        //         let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
-        //         sock.connect(&url.host).await.unwrap();
+    // // NOTE: handshake here?
+    // // NOTE: redesign this to not pass handshake bytes. Just create it in the `handshake_tcp` function
+    // pub async fn new_with_handshake(
+    //     url: Url,
+    //     handshake_bytes: Arc<Vec<u8>>,
+    // ) -> Result<Self, UttdError> {
+    //     // ERROR: Can't do this because there is no scheme
+    //     // let stream = match url.scheme {
+    //     //     Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
+    //     //         tokio::net::TcpStream::connect(&url.host).await.unwrap(),
+    //     //     )),
+    //     //     Scheme::UDP => {
+    //     //         let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
+    //     //         sock.connect(&url.host).await.unwrap();
 
-        //         AsyncStream(AsyncStreamType::UtpStream(sock))
-        //     }
-        //     _ => unimplemented!(),
-        // };
-        // Ok(stream)
-
-        tokio::select! {
-            res = Self::handshake_tcp(&url, handshake_bytes.clone()) => {
-                res
-            }
-
-            res = Self::handshake_utp(&url) => {
-                res
-            }
-
-
-        }
-    }
-
-    async fn handshake_tcp(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
-        let mut stream = tokio::time::timeout(
-            Duration::from_secs(5),
-            tokio::net::TcpStream::connect(&url.host),
-        )
-        .await??;
-
-        let mut res = vec![0; 68];
-        // let result = stream?.write_all(&handshake_bytes, &mut res);
-        let br = Self::send_tcp(&mut stream, &handshake_bytes, &mut res).await?;
-
-        // Though the docs proclaim that "all current implmentation" of the bittorrent protocol
-        // set all the reserved bytes to 0, most peer support atleast a few extentions, most
-        // torrent clients also modify some reserved bytes. `reserved[5]` and `reserved[7]` is usually set.
-        // `reserved[5]` == 0x10 indicates that this peer actually supports the extended bittorrent protocol,
-        // while reserved[7] == 0x04 indicates the peer suppor the fast extention. `reserved[7]` == 0x01 indicates
-        // that the peer supports DHT nodes. Combining both, `reserved[7]` == 0x05 means that the peer supports
-        // both the fast extention and the DHT extention.
-        //
-        // As such, the response reserved bytes from a received packet generally looks like this:
-        //  0  1  2  3  4  5   6  7
-        // [0, 0, 0, 0, 0, 16, 0, 5]
-
-        println!("In: {:?}", handshake_bytes);
-        println!("Res: {:?}", res);
-
-        // IMPORTANT: this checks if the peer supports the extended bittorret protocol
-        // https://www.bittorrent.org/beps/bep_0010.html
-        // Peers announce to each other whether or not they support the extended protocol by setting the
-        // reserved[5](0-indexed) byte to 0x10 (16 in decimal)
-
-        // if res[25] & 0x10 != 0 {
-        //     println!("Found Extended",);
-        // }
-        //
-
-        // [0, 0, 0, 197]
-        // [20, 0, 100, 49, 50, 58, 99, 111, 109, 112, 108, 101, 116, 101, 95, 97, 103, 111, 105, 50, 54, 49, 56, 101, 49, 58, 109, 100]
-        //  |
-        //  |
-        //  |
-        //  |
-        //  This is the extended byte message.
-        // TODO: figure out the message
-        // https://www.bittorrent.org/beps/bep_0010.html
-
-        // TODO: restruct these elsewhere
-        let mut dht_msg_len = vec![0; 4];
-
-        _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;
-        let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..4].try_into().unwrap());
-
-        let mut dht_msg = vec![0_u8; dht_msg_len as usize];
-        _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
-
-        // `dht_msg` is u8-bytes of bencoded dictionary with various keys
-        // see more: https://www.bittorrent.org/beps/bep_0010.html
-
-        // [0, 0, 0, 197]
-        // [20, 0, 100, 49, 50, 58, 99, 111, 109, 112, 108, 101, 116, 101, 95, 97, 103, 111, 105, 50, 54, 49, 56, 101, 49, 58, 109, 100]
-        // println!(
-        //     "Initial Value len: {}",
-        //     u32::from_be_bytes([dht_msg[0], dht_msg[1], dht_msg[2], dht_msg[3]])
-        // );
-        //
-        //
-        // -----------------------------------------------------------------------------------------------------------------------------------
-        //
-
-        if br == 68 && res[0] == 19 {
-            return Ok(AsyncStream(AsyncStreamType::TcpStream(stream)));
-        } else {
-            return Err(UttdError::FailedRequest);
-        }
-    }
-
-    async fn handshake_utp(url: &Url) -> Result<Self, UttdError> {
-        let mut stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
-        stream.connect(&url.host).await?;
-
-        let bytes = UtpPacket::new().as_bytes();
-        let mut res = vec![0; 20];
-
-        let br = Self::send_utp(&mut stream, &bytes, &mut res).await?;
-
-        // println!("Gets here with: br: {} & res: {}", br, res[0]);
-        // println!("{:?}", url);
-
-        if res[0] == 33 {
-            return Ok(AsyncStream(AsyncStreamType::UtpStream(stream)));
-        }
-
-        // TODO: remove this line
-        Err(UttdError::FailedRequest)
-    }
-
-    // TODO: Complete this function
-
-    /// Create a new `AsyncStream` on provided `url`
-    /// Default duration is `5` seconds
-    // pub async fn handshake(url: &Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
-    //     let mut stream = tokio::time::timeout(
-    //         // set timeout to 5 seconds
-    //         Duration::from_secs(5),
-    //         Self::new(&url),
-    //     )
-    //     .await??;
-
-    //     let mut res = vec![0; 68];
+    //     //         AsyncStream(AsyncStreamType::UtpStream(sock))
+    //     //     }
+    //     //     _ => unimplemented!(),
+    //     // };
+    //     // Ok(stream)
 
     //     tokio::select! {
-    //         bytes_read = stream.send(&handshake_bytes, &mut res) => {
-    //             if let Ok(br) = bytes_read {
-    //                 if br == 68 && res[0] == 19{
-    //                     return Ok(stream);
-    //                 }
-    //             }
-    //             else {
-    //                 return Err(UttdError::FailedRequest);
-    //             }
+    //         res = Self::handshake_tcp(&url, handshake_bytes.clone()) => {
+    //             res
     //         }
-    //     };
-    //     Ok(stream)
+
+    //         res = Self::handshake_utp(&url) => {
+    //             res
+    //         }
+
+    //     }
     // }
 
     /// Send `data` to the stream and receive in `res`
@@ -393,12 +270,16 @@ impl<'a> AsyncStream {
     /// have initialized `res` with sufficient bytes. It only the exact bytes as is the capacity of `res`
     pub async fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<usize, UttdError> {
         match self {
-            AsyncStream(AsyncStreamType::TcpStream(t)) => Self::send_tcp(t, data, res).await,
-            AsyncStream(AsyncStreamType::UtpStream(u)) => Self::send_utp(u, data, res).await,
+            AsyncStream {
+                async_stream_type: AsyncStreamType::TcpStream(t),
+            } => Self::send_tcp(t, data, res).await,
+            AsyncStream {
+                async_stream_type: AsyncStreamType::UtpStream(u),
+            } => Self::send_utp(u, data, res).await,
         }
     }
 
-    async fn send_tcp(
+    pub async fn send_tcp(
         tcp: &mut tokio::net::TcpStream,
         data: &[u8],
         res: &mut Vec<u8>,
@@ -408,7 +289,7 @@ impl<'a> AsyncStream {
         Ok(response?)
     }
 
-    async fn send_utp(
+    pub async fn send_utp(
         utp: &mut tokio::net::UdpSocket,
         data: &[u8],
         res: &mut Vec<u8>,
@@ -431,7 +312,9 @@ impl<'a> AsyncStream {
     /// Read 4 bytes of data once and return
     pub async fn read_once(&mut self) -> Result<u32, UttdError> {
         match self {
-            AsyncStream(AsyncStreamType::TcpStream(t)) => Self::read_once_tcp(t).await,
+            AsyncStream {
+                async_stream_type: AsyncStreamType::TcpStream(t),
+            } => Self::read_once_tcp(t).await,
             _ => unimplemented!(),
         }
     }
@@ -446,14 +329,18 @@ impl<'a> AsyncStream {
 
     pub async fn read_multiple(&mut self, res: &mut Vec<u8>) -> Result<(), UttdError> {
         match self {
-            AsyncStream(AsyncStreamType::TcpStream(t)) => Self::read_multiple_tcp(t, res).await,
-            AsyncStream(AsyncStreamType::UtpStream(u)) => Self::read_multiple_utp(u, res).await,
+            AsyncStream {
+                async_stream_type: AsyncStreamType::TcpStream(t),
+            } => Self::read_multiple_tcp(t, res).await,
+            AsyncStream {
+                async_stream_type: AsyncStreamType::UtpStream(u),
+            } => Self::read_multiple_utp(u, res).await,
         }
     }
 
     // TODO: return the amount of bytes read
     /// Read `res.len()` bytes of data and pass it through `res`
-    async fn read_multiple_tcp(
+    pub async fn read_multiple_tcp(
         tcp: &mut tokio::net::TcpStream,
         res: &mut Vec<u8>,
     ) -> Result<(), UttdError> {
@@ -461,7 +348,7 @@ impl<'a> AsyncStream {
         Ok(())
     }
 
-    async fn read_multiple_utp(
+    pub async fn read_multiple_utp(
         utp: &mut tokio::net::UdpSocket,
         res: &mut Vec<u8>,
     ) -> Result<(), UttdError> {
