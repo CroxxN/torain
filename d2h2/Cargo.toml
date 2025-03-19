@@ -8,3 +8,9 @@ path = "../tinymt"
 
 [dependencies.uttd]
 path = "../uttd"
+
+[dependencies.bencode]
+path = "../bencode"
+
+[dependencies]
+tokio = { version = "1.41.1", features = ["full"] }

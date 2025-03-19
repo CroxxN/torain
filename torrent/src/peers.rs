@@ -3,6 +3,38 @@ use tokio::sync::Mutex;
 
 use uttd::{url::Url, utp::UtpPacket, AsyncStream, AsyncStreamType, UttdError};
 
+#[repr(C)]
+#[repr(packed)]
+pub struct Handshake {
+    pub len: u8,
+    pub protocol: [u8; 19],
+    pub reserved: [u8; 8],
+    pub info_hash: [u8; 20],
+    pub peer_id: [u8; 20],
+}
+
+impl Handshake {
+    pub fn new(info_hash: [u8; 20], peer_id: [u8; 20]) -> Self {
+        // Setting the last bit of the reserved field to indicate we support DHT
+        let mut reserved = [0u8; 8];
+        // TODO: fix
+        reserved[7] |= 0x01;
+        reserved[5] |= 0x10;
+        Self {
+            len: 19,
+            protocol: *b"BitTorrent protocol",
+            reserved,
+            info_hash,
+            peer_id,
+        }
+    }
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        let bytes = self as *mut Self as *mut [u8; std::mem::size_of::<Self>()];
+        let bytes: &mut [u8; std::mem::size_of::<Self>()] = unsafe { &mut *bytes };
+        bytes
+    }
+}
+
 #[derive(Debug)]
 pub struct Peers {
     pub interval: i32,
@@ -49,12 +81,13 @@ impl Peers {
         }
         successful_streams
     }
+
     async fn initiate_handshake(
         url: Url,
         handshake_bytes: Arc<Vec<u8>>,
     ) -> Result<AsyncStream, UttdError> {
         tokio::select! {
-            res = Self::handshake_tcp(&url, handshake_bytes.clone()) => {
+            res = Self::initiate_handshake_tcp(&url, handshake_bytes.clone()) => {
                 res
             }
 
@@ -66,7 +99,7 @@ impl Peers {
         }
     }
 
-    async fn handshake_tcp(
+    async fn initiate_handshake_tcp(
         url: &Url,
         handshake_bytes: Arc<Vec<u8>>,
     ) -> Result<AsyncStream, UttdError> {
@@ -91,9 +124,6 @@ impl Peers {
         // As such, the response reserved bytes from a received packet generally looks like this:
         //  0  1  2  3  4  5   6  7
         // [0, 0, 0, 0, 0, 16, 0, 5]
-
-        println!("In: {:?}", handshake_bytes);
-        println!("Res: {:?}", res);
 
         // IMPORTANT: this checks if the peer supports the extended bittorret protocol
         // https://www.bittorrent.org/beps/bep_0010.html
@@ -121,8 +151,15 @@ impl Peers {
         _ = AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;
         let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..4].try_into().unwrap());
 
-        let mut dht_msg = vec![0_u8; dht_msg_len as usize];
-        _ = AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
+        // TODO: make this beautiful
+        let mut temp = vec![0; 2];
+        _ = AsyncStream::read_multiple_tcp(&mut stream, &mut temp).await?;
+
+        if temp[0] == 20 {
+            let mut dht_msg = vec![0_u8; dht_msg_len as usize - 2];
+            _ = AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
+            _ = bencode::bencode::decode(&mut dht_msg.into_iter()).expect("Can't decode bencode");
+        }
 
         // `dht_msg` is u8-bytes of bencoded dictionary with various keys
         // see more: https://www.bittorrent.org/beps/bep_0010.html
@@ -136,6 +173,7 @@ impl Peers {
         //
         //
         // -----------------------------------------------------------------------------------------------------------------------------------
+        //
         //
 
         if br == 68 && res[0] == 19 {
@@ -167,38 +205,6 @@ impl Peers {
 
         // TODO: remove this line
         Err(UttdError::FailedRequest)
-    }
-}
-
-#[repr(C)]
-#[repr(packed)]
-pub struct Handshake {
-    pub len: u8,
-    pub protocol: [u8; 19],
-    pub reserved: [u8; 8],
-    pub info_hash: [u8; 20],
-    pub peer_id: [u8; 20],
-}
-
-impl Handshake {
-    pub fn new(info_hash: [u8; 20], peer_id: [u8; 20]) -> Self {
-        // Setting the last bit of the reserved field to indicate we support DHT
-        let mut reserved = [0u8; 8];
-        // TODO: fix
-        reserved[7] |= 0x01;
-        reserved[5] |= 0x10;
-        Self {
-            len: 19,
-            protocol: *b"BitTorrent protocol",
-            reserved,
-            info_hash,
-            peer_id,
-        }
-    }
-    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
-        let bytes = self as *mut Self as *mut [u8; std::mem::size_of::<Self>()];
-        let bytes: &mut [u8; std::mem::size_of::<Self>()] = unsafe { &mut *bytes };
-        bytes
     }
 }
 

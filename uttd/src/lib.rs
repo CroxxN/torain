@@ -38,6 +38,7 @@ impl From<tokio::time::error::Elapsed> for UttdError {
     }
 }
 
+// synchronous stream
 pub struct Stream {
     pub stream: StreamType,
     host: String,
@@ -48,7 +49,6 @@ pub enum StreamType {
     UDP(Udp),
 }
 
-#[allow(dead_code)]
 pub struct Udp {
     socket: UdpSocket,
     pub connection_id: i64,
@@ -122,7 +122,6 @@ impl Stream {
     /// // or
     /// let mut res = Vec::with_capacity(10);
     /// ```
-    ///
     pub fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
         // method for UDP expects an already allocated buffer. Vec::new() just creates a container with length 0.
@@ -232,38 +231,6 @@ impl<'a> AsyncStream {
             _ => unimplemented!(),
         }
     }
-    // // NOTE: handshake here?
-    // // NOTE: redesign this to not pass handshake bytes. Just create it in the `handshake_tcp` function
-    // pub async fn new_with_handshake(
-    //     url: Url,
-    //     handshake_bytes: Arc<Vec<u8>>,
-    // ) -> Result<Self, UttdError> {
-    //     // ERROR: Can't do this because there is no scheme
-    //     // let stream = match url.scheme {
-    //     //     Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
-    //     //         tokio::net::TcpStream::connect(&url.host).await.unwrap(),
-    //     //     )),
-    //     //     Scheme::UDP => {
-    //     //         let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
-    //     //         sock.connect(&url.host).await.unwrap();
-
-    //     //         AsyncStream(AsyncStreamType::UtpStream(sock))
-    //     //     }
-    //     //     _ => unimplemented!(),
-    //     // };
-    //     // Ok(stream)
-
-    //     tokio::select! {
-    //         res = Self::handshake_tcp(&url, handshake_bytes.clone()) => {
-    //             res
-    //         }
-
-    //         res = Self::handshake_utp(&url) => {
-    //             res
-    //         }
-
-    //     }
-    // }
 
     /// Send `data` to the stream and receive in `res`
     /// Note: Peers are continuous stream of data. You must
@@ -297,7 +264,8 @@ impl<'a> AsyncStream {
         let mut read = 0;
         for _ in 0..5 {
             read = utp.send(data).await.unwrap();
-            if let Ok(_) = tokio::time::timeout(Duration::from_secs(10), utp.recv(res)).await? {
+            if let Ok(r) = tokio::time::timeout(Duration::from_secs(10), utp.recv(res)).await? {
+                read = r;
                 break;
             }
         }
@@ -354,26 +322,6 @@ impl<'a> AsyncStream {
     ) -> Result<(), UttdError> {
         _ = tokio::time::timeout(Duration::from_secs(121), utp.recv(res)).await??;
         Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct UtpStream(tokio::net::UdpSocket);
-
-impl UtpStream {
-    pub async fn new(url: &Url) -> Result<Self, UttdError> {
-        let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
-        sock.connect(&url.host).await?;
-        Ok(Self(sock))
-    }
-    pub async fn send(&mut self, data: &[u8], res: &mut [u8]) {
-        res[1] = 15;
-        for _ in 0..5 {
-            self.0.send(data).await.unwrap();
-            if let Ok(_) = tokio::time::timeout(Duration::from_secs(10), self.0.recv(res)).await {
-                break;
-            }
-        }
     }
 }
 
