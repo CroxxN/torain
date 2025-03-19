@@ -211,9 +211,30 @@ pub enum AsyncStreamType {
 }
 
 impl<'a> AsyncStream {
+    pub async fn new(url: Url) -> Result<Self, UttdError> {
+        match url.scheme {
+            Scheme::HTTP => {
+                let stream = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    tokio::net::TcpStream::connect(&url.host),
+                )
+                .await??;
+                Ok(AsyncStream(AsyncStreamType::TcpStream(stream)))
+            }
+            Scheme::UDP => {
+                let stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+                stream.connect(&url.host).await?;
+                Ok(AsyncStream(AsyncStreamType::UtpStream(stream)))
+            }
+            _ => unimplemented!(),
+        }
+    }
     // NOTE: handshake here?
     // NOTE: redesign this to not pass handshake bytes. Just create it in the `handshake_tcp` function
-    pub async fn new(url: Url, handshake_bytes: Arc<Vec<u8>>) -> Result<Self, UttdError> {
+    pub async fn new_with_handshake(
+        url: Url,
+        handshake_bytes: Arc<Vec<u8>>,
+    ) -> Result<Self, UttdError> {
         // ERROR: Can't do this because there is no scheme
         // let stream = match url.scheme {
         //     Scheme::HTTP => AsyncStream(AsyncStreamType::TcpStream(
@@ -292,7 +313,7 @@ impl<'a> AsyncStream {
         let mut dht_msg_len = vec![0; 4];
 
         _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;
-        let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..5].try_into().unwrap());
+        let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..4].try_into().unwrap());
 
         let mut dht_msg = vec![0_u8; dht_msg_len as usize];
         _ = Self::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
@@ -309,6 +330,7 @@ impl<'a> AsyncStream {
         //
         //
         // -----------------------------------------------------------------------------------------------------------------------------------
+        //
 
         if br == 68 && res[0] == 19 {
             return Ok(AsyncStream(AsyncStreamType::TcpStream(stream)));
