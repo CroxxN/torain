@@ -1,4 +1,26 @@
+#![allow(dead_code)]
+
 use uttd::{url::Url, AsyncStream};
+
+// which type of query is this packet?
+enum Query {
+    PING,
+    FindNode,
+    GetPeers,
+    AnnouncePeer,
+}
+
+#[derive(Debug)]
+pub struct DHT {
+    node: Node,
+    table: RTable,
+}
+
+impl DHT {
+    pub async fn new() -> Self {
+        todo!()
+    }
+}
 
 #[derive(Debug)]
 pub struct Node {
@@ -6,11 +28,11 @@ pub struct Node {
     routing: RTable,
 }
 
+impl Node {}
+
 // Routing table
 #[derive(Debug)]
 pub struct RTable {}
-
-impl Node {}
 
 // we need a few nodes to "bootstrap" our DHT table.
 // pub async fn bootstrap() -> Result<(), UttdError> {
@@ -33,46 +55,44 @@ pub async fn bootstrap() -> AsyncStream {
 // TODO: Create a nice way to interact with the DHT server.
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
 
-    use bencode::bencode::BTypes;
+    use bencode::{bencode::BTypes, bencoen};
 
     use crate::bootstrap;
 
     #[tokio::test]
-    async fn connect() {
+    async fn connect_dht() {
         let mut s = bootstrap().await;
         println!("{:?}", s);
 
-        let mut id: BTreeMap<String, BTypes> = BTreeMap::new();
-        id.insert(
+        let id = bencoen::Bencoen::new(
             "id".to_string(),
+            // TODO: Change this to reflect actual node id. maybe generate using sha
             BTypes::BSTRING("abcdefghij0123456789".into()),
         );
 
-        let mut dict: BTreeMap<String, BTypes> = BTreeMap::new();
+        let mut dict = bencoen::Bencoen::new("t".to_string(), BTypes::BSTRING("aa".into()));
 
-        dict.insert("t".to_string(), BTypes::BSTRING("aa".into()));
-        dict.insert("y".to_string(), BTypes::BSTRING("q".into()));
-        dict.insert("q".to_string(), BTypes::BSTRING("ping".into()));
+        dict.add("y".to_string(), BTypes::BSTRING("q".into()));
+        dict.add("q".to_string(), BTypes::BSTRING("ping".into()));
 
-        dict.insert("a".to_string(), BTypes::DICT(id));
+        dict.add("a".to_string(), id.get_inner());
 
-        let bcon = BTypes::DICT(dict);
-
-        println!("{:?}", bcon);
-
-        let encoded = bencode::bencoen::ser(&bcon);
-        println!("{:?}", encoded);
+        let encoded = dict.finalize();
 
         let mut res = vec![0; 100];
-
-        let read = s.send(&encoded, &mut res).await.unwrap();
-        println!("Read: {read}");
+        _ = s.send(&encoded, &mut res).await.unwrap();
 
         let decoded =
             bencode::bencode::decode(&mut res.into_iter()).expect("Unable to decode bytes");
-        println!("Decoded: {:?}", decoded);
-        // outer["t"] = BTypes::BSTRING("aa".into());
+
+        if let BTypes::DICT(d) = decoded {
+            if let Some(_) = d.get("y") {
+                return ();
+            } else {
+                panic!("Key 'y' not present.");
+            }
+        }
+        panic!("No Dictionary present.")
     }
 }

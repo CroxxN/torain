@@ -61,7 +61,7 @@ impl<'a> TrackerParams<'a> {
         }
     }
 
-    // will be more sophisticated once resume function is implemented
+    // TODO: will be more sophisticated once resume function is implemented
 
     fn params(&self) -> HashMap<&'static str, Vec<u8>> {
         let mut map = HashMap::new();
