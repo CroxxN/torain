@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+mod parse;
+mod utils;
+
 use uttd::{url::Url, AsyncStream};
 
 // which type of query is this packet?

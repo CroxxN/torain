@@ -90,3 +90,15 @@ impl TryFrom<&BTypes> for Vec<u8> {
         }
     }
 }
+
+impl<'a> TryFrom<&'a BTypes> for &'a [u8] {
+    type Error = BencodeErr;
+    fn try_from(value: &'a BTypes) -> Result<Self, Self::Error> {
+        if let BTypes::BSTRING(s) = value {
+            // Ok(s.to_vec())
+            Ok(s.as_slice())
+        } else {
+            Err(BencodeErr::Berr)
+        }
+    }
+}
