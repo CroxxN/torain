@@ -1,6 +1,8 @@
 use bencode::bencode::BTypes;
 use uttd::url::Url;
 
+use crate::error::DHTError;
+
 #[derive(Debug)]
 struct Response<'a> {
     id: &'a [u8],
@@ -8,7 +10,7 @@ struct Response<'a> {
 }
 
 impl<'a> Response<'a> {
-    fn new(packet: &'a [u8]) -> Self {
+    fn new(packet: &'a [u8]) -> Result<Self, DHTError> {
         let decoded = bencode::bencode::decode(&mut packet.into_iter().map(|x| *x))
             .expect("Unable to decode bytes");
 
@@ -18,14 +20,7 @@ impl<'a> Response<'a> {
                 if &status == "e" {
                     // can use unwrap here because we know for certain that the request has errored
                     let err_code: usize = d.get("e").unwrap().try_into().unwrap();
-                    match err_code {
-                        201 => (),
-                        202 => (),
-                        203 => (),
-                        204 => (),
-                        _ => (),
-                    };
-                    todo!()
+                    return Err(DHTError::Error(err_code as u32));
                 }
 
                 if let Some(response) = d.get("r") {
@@ -37,6 +32,10 @@ impl<'a> Response<'a> {
                             let url = Url::from_ip_bytes(&x[..4], port);
                             urls.push(url);
                         }
+                        return Ok(Self {
+                            id: &[128],
+                            node: urls,
+                        });
                     }
                 }
                 // return ();
@@ -44,8 +43,8 @@ impl<'a> Response<'a> {
             } else {
                 panic!("Key 'y' not present.");
             }
+        } else {
+            return Err(DHTError::Error(10));
         }
-
-        todo!()
     }
 }
