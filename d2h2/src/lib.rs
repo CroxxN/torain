@@ -51,8 +51,8 @@ pub async fn bootstrap() -> AsyncStream {
     // ];
     // we use "udp" here to let our url library know that we want to create a *UDP* async stream
     let bootstrap = Url::new("udp://router.bittorrent.com:6881").unwrap();
-    let stream = AsyncStream::new(bootstrap).await.unwrap();
-    stream
+    
+    AsyncStream::new(bootstrap).await.unwrap()
 }
 
 // WORKS
@@ -91,8 +91,8 @@ mod tests {
             bencode::bencode::decode(&mut res.into_iter()).expect("Unable to decode bytes");
 
         if let BTypes::DICT(d) = decoded {
-            if let Some(_) = d.get("y") {
-                return ();
+            if d.get("y").is_some() {
+                return ;
             } else {
                 panic!("Key 'y' not present.");
             }

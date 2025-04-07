@@ -148,16 +148,16 @@ impl Peers {
         // TODO: restruct these elsewhere
         let mut dht_msg_len = vec![0; 4];
 
-        _ = AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;
+        AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;;
         let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..4].try_into().unwrap());
 
         // TODO: make this beautiful
         let mut temp = vec![0; 2];
-        _ = AsyncStream::read_multiple_tcp(&mut stream, &mut temp).await?;
+        AsyncStream::read_multiple_tcp(&mut stream, &mut temp).await?;;
 
         if temp[0] == 20 {
             let mut dht_msg = vec![0_u8; dht_msg_len as usize - 2];
-            _ = AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
+            AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg).await?;;
             _ = bencode::bencode::decode(&mut dht_msg.into_iter()).expect("Can't decode bencode");
         }
 
@@ -177,11 +177,11 @@ impl Peers {
         //
 
         if br == 68 && res[0] == 19 {
-            return Ok(AsyncStream {
+            Ok(AsyncStream {
                 async_stream_type: AsyncStreamType::TcpStream(stream),
-            });
+            })
         } else {
-            return Err(UttdError::FailedRequest);
+            Err(UttdError::FailedRequest)
         }
     }
 
@@ -269,7 +269,7 @@ mod test {
         let info_hash = torrent.hash;
         let peer_id = tracker.peer_id;
         let streams = announce.handshake(info_hash, peer_id).await;
-        assert!(streams.len() != 0);
+        assert!(!streams.is_empty());
     }
 
     // IMPORTANT: This may fail as there usually aren't many healthy peers on HTTP/UDP based trackers
@@ -282,6 +282,6 @@ mod test {
         let info_hash = torrent.hash;
         let peer_id = tracker.peer_id;
         let streams = announce.handshake(info_hash, peer_id).await;
-        assert!(streams.len() != 0);
+        assert!(!streams.is_empty());
     }
 }

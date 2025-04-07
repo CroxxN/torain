@@ -11,7 +11,7 @@ struct Response<'a> {
 
 impl<'a> Response<'a> {
     fn new(packet: &'a [u8]) -> Result<Self, DHTError> {
-        let decoded = bencode::bencode::decode(&mut packet.into_iter().map(|x| *x))
+        let decoded = bencode::bencode::decode(&mut packet.iter().copied())
             .expect("Unable to decode bytes");
 
         if let BTypes::DICT(d) = decoded {
@@ -44,7 +44,7 @@ impl<'a> Response<'a> {
                 panic!("Key 'y' not present.");
             }
         } else {
-            return Err(DHTError::Error(10));
+            Err(DHTError::Error(10))
         }
     }
 }

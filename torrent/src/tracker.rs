@@ -55,7 +55,7 @@ impl<'a> TrackerParams<'a> {
             uploaded: 0,
             downloaded: 0,
             left,
-            compact: &[b'1'],
+            compact: b"1",
             event: Event::Started,
             trackerid: None,
         }
@@ -118,7 +118,7 @@ impl<'a> TrackerParams<'a> {
         request_body.extend_from_slice(&connection_id.to_be_bytes()); // connection_id
         request_body.extend_from_slice(&1_u32.to_be_bytes()); // action
         request_body.extend_from_slice(&1_u32.to_be_bytes()); // transaction_id
-        request_body.extend_from_slice(&self.info_hash); // info_hash
+        request_body.extend_from_slice(self.info_hash); // info_hash
         request_body.extend_from_slice(&self.peer_id); // peer_id
         request_body.extend_from_slice(&0_u64.to_be_bytes()); // downloaded
         request_body.extend_from_slice(&self.left.to_be_bytes()); // left
@@ -162,7 +162,7 @@ impl<'a> TrackerParams<'a> {
 
         let decoded_body = decode(&mut bytes.into_iter()).unwrap();
         if let BTypes::DICT(d) = decoded_body {
-            if let Some(_) = d.get("failure") {
+            if d.get("failure").is_some() {
                 panic!("FAILED");
             }
             interval = d.get("interval").unwrap().try_into().unwrap();

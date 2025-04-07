@@ -187,7 +187,7 @@ impl Torrent {
         match self.info.mode {
             FileMode::SingleMode { length } => length,
             FileMode::MultiMode { ref files } => {
-                files.iter().map(|f| f.length).fold(0, |acc, l| acc + l)
+                files.iter().map(|f| f.length).sum::<usize>()
             }
         }
     }

@@ -142,7 +142,7 @@ impl Stream {
     }
 
     fn send_tcp(stream: &mut TcpStream, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
-        if res.len() == 0 {
+        if res.is_empty() {
             stream.write_all(data)?;
             stream.read_to_end(res)?;
         } else {
@@ -157,7 +157,7 @@ impl Stream {
         // if timeout, retry for 5 times
         for _ in 0..5 {
             stream.send(data).unwrap();
-            if let Ok(_) = stream.recv(res) {
+            if stream.recv(res).is_ok() {
                 break;
             }
         }

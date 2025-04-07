@@ -41,13 +41,18 @@ pub struct UtpPacket {
     ack_number: u16,
 }
 
+impl Default for UtpPacket {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UtpPacket {
     pub fn new() -> Self {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
 
         let timestamp = (timestamp.as_secs().wrapping_add(1_000_000) as u32)
-            .wrapping_add(timestamp.subsec_micros())
-            .into();
+            .wrapping_add(timestamp.subsec_micros());
 
         Self {
             // first message is the ST_SYN message
@@ -69,8 +74,7 @@ impl UtpPacket {
     pub fn refetch_timestamp(&mut self) {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let timestamp = (timestamp.as_secs().wrapping_add(1_000_000) as u32)
-            .wrapping_add(timestamp.subsec_micros())
-            .into();
+            .wrapping_add(timestamp.subsec_micros());
 
         self.timestamp = timestamp;
     }

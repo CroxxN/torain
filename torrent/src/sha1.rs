@@ -21,6 +21,12 @@ pub struct Sha1 {
     word: [u32; 80],
 }
 
+impl Default for Sha1 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sha1 {
     pub const fn new() -> Self {
         Self {
@@ -52,7 +58,7 @@ impl Sha1 {
         let mut curr_idx = 0;
         for _ in 0..self.num_blocks {
             self.process_hash_cont(&input[curr_idx..(curr_idx + 64)], false);
-            curr_idx = curr_idx + 64;
+            curr_idx += 64;
         }
         if last_index_value < 56 {
             self.process_hash_last(&input[curr_idx..], true);
@@ -79,7 +85,7 @@ impl Sha1 {
         let temp = Self::initialize_bits(input, flag);
         let mut limit = input.len() / 4;
         if flag {
-            limit = limit + 1;
+            limit += 1;
         }
         self.word
             .iter_mut()
@@ -141,7 +147,7 @@ impl Sha1 {
         }
         for t in 0..80_usize {
             let mut temp: u32 = 0;
-            let idx = ((t) / 20) as usize;
+            let idx = (t) / 20;
             temp = temp
                 .wrapping_add(self.f_buf[0].rotate_left(5))
                 .wrapping_add(self.f(&t))

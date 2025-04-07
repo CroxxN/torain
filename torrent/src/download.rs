@@ -29,7 +29,8 @@ pub enum DownloadError {
 
 impl Message {
     fn try_from(value: &[u8], len: usize) -> Self {
-        let message = match value[0] {
+        
+        match value[0] {
             // id
             0 => Self::Choke,
             1 => Self::Unchoke,
@@ -40,8 +41,7 @@ impl Message {
             7 => Self::Piece(value[1..(len - 9)].to_vec()),
             13 => Self::Request,
             _ => todo!(),
-        };
-        message
+        }
     }
 }
 
@@ -90,9 +90,9 @@ impl Bitfield {
     pub fn set(&mut self, index: usize) {
         match &mut self.bit {
             BitfieldInner::Large(x_field) => {
-                let max_point = (index / 8) as usize;
+                let max_point = index / 8;
                 let min_point = index % 8;
-                x_field[max_point] = x_field[max_point] ^ (1 << min_point);
+                x_field[max_point] ^= 1 << min_point;
             }
             BitfieldInner::Compact(x_compac) => {
                 self.bit = BitfieldInner::Compact(*x_compac ^ (1 << index));
@@ -142,7 +142,7 @@ impl Participants {
         let file_size = t.calculate_left();
         let block_size = t.info.piece_length;
         let folder = &t.info.name;
-        let path = PathBuf::from_str(&folder).unwrap();
+        let path = PathBuf::from_str(folder).unwrap();
 
         Self {
             file_size,
