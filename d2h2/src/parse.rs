@@ -2,6 +2,7 @@ use bencode::bencode::BTypes;
 use uttd::url::Url;
 
 use crate::error::DHTError;
+use crate::utils::*;
 
 #[derive(Debug)]
 struct Response<'a> {
@@ -11,8 +12,15 @@ struct Response<'a> {
 
 impl<'a> Response<'a> {
     fn new(packet: &'a [u8]) -> Result<Self, DHTError> {
-        let decoded = bencode::bencode::decode(&mut packet.iter().copied())
-            .expect("Unable to decode bytes");
+        let decoded =
+            bencode::bencode::decode(&mut packet.iter().copied()).expect("Unable to decode bytes");
+
+        if let Some(v) = get_string_from_dict(&decoded, "y") {
+            if &v == "e" {
+                let err_code: usize = get_usize_from_dict(&decoded, "e").unwrap();
+                return Err(DHTError::Error(err_code as u32));
+            }
+        }
 
         if let BTypes::DICT(d) = decoded {
             if let Some(y) = d.get("y") {
