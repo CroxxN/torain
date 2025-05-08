@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+pub(crate) use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use uttd::{url::Url, utp::UtpPacket, AsyncStream, AsyncStreamType, UttdError};
@@ -148,16 +148,16 @@ impl Peers {
         // TODO: restruct these elsewhere
         let mut dht_msg_len = vec![0; 4];
 
-        AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;;
+        AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg_len).await?;
         let dht_msg_len = u32::from_be_bytes(dht_msg_len[0..4].try_into().unwrap());
 
         // TODO: make this beautiful
         let mut temp = vec![0; 2];
-        AsyncStream::read_multiple_tcp(&mut stream, &mut temp).await?;;
+        AsyncStream::read_multiple_tcp(&mut stream, &mut temp).await?;
 
         if temp[0] == 20 {
             let mut dht_msg = vec![0_u8; dht_msg_len as usize - 2];
-            AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg).await?;;
+            AsyncStream::read_multiple_tcp(&mut stream, &mut dht_msg).await?;
             _ = bencode::bencode::decode(&mut dht_msg.into_iter()).expect("Can't decode bencode");
         }
 
