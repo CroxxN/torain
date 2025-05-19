@@ -103,7 +103,7 @@ impl Torrent {
         let mut torrent = Self::default();
         if let Ok(b) = bencode::bencode::decode(u8s) {
             if let BTypes::DICT(d) = b {
-                torrent.de_fields(d).expect("Failed to decrypt fields");
+                torrent.decode_fields(d).expect("Failed to decrypt fields");
             } else {
                 return Err(TorrentError::UnexpectedField);
             }
@@ -115,20 +115,20 @@ impl Torrent {
 
     /// Decode fields of the torrent
     /// @arg 1: BTreeMap of bencoded dictionary
-    fn de_fields(&mut self, d: BTreeMap<String, BTypes>) -> Result<(), DecodeError> {
+    fn decode_fields(&mut self, d: BTreeMap<String, BTypes>) -> Result<(), DecodeError> {
         self.announce = d.get("announce").unwrap().try_into()?;
         self.announce_list = decode_option(d.get("announce-list"))?;
         self.creation_date = decode_option(d.get("creation date"))?;
         self.comment = decode_option(d.get("comment"))?;
         self.created_by = decode_option(d.get("created by"))?;
         self.encoding = decode_option(d.get("encoding"))?;
-        self.de_info_fields(d.get("info"))?;
+        self.decode_info_fields(d.get("info"))?;
         self.info_hash(d.get("info"));
         Ok(())
     }
 
     /// Decode info field specifically
-    fn de_info_fields(&mut self, d: Option<&BTypes>) -> Result<(), DecodeError> {
+    fn decode_info_fields(&mut self, d: Option<&BTypes>) -> Result<(), DecodeError> {
         if let Some(BTypes::DICT(d)) = d {
             self.info.name = d.get("name").unwrap().try_into()?;
             self.info.piece_length = d.get("piece length").unwrap().try_into()?;
@@ -186,9 +186,7 @@ impl Torrent {
     pub fn calculate_left(&self) -> usize {
         match self.info.mode {
             FileMode::SingleMode { length } => length,
-            FileMode::MultiMode { ref files } => {
-                files.iter().map(|f| f.length).sum::<usize>()
-            }
+            FileMode::MultiMode { ref files } => files.iter().map(|f| f.length).sum::<usize>(),
         }
     }
 }

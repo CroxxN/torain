@@ -12,8 +12,15 @@ struct Response<'a> {
 
 impl<'a> Response<'a> {
     fn new(packet: &'a [u8]) -> Result<Self, DHTError> {
+        // decoded packet
         let decoded =
             bencode::bencode::decode(&mut packet.iter().copied()).expect("Unable to decode bytes");
+
+        // key: y
+        // TODO: move the y-key checking logic to `get_string_from_dict`
+        // "y" key can take two values: "e" and "q". "y: 'e'" suggests that an error has occured.
+        // The error can be found in key "e".
+        // "y: 'q'" suggests success. Look at key "q" for further steps.
 
         if let Some(v) = get_string_from_dict(&decoded, "y") {
             if &v == "e" {

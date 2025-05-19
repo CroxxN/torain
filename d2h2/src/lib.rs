@@ -1,3 +1,5 @@
+// REFERENCE: https://www.bittorrent.org/beps/bep_0005.html
+
 #![allow(dead_code)]
 
 mod error;
@@ -51,7 +53,7 @@ pub async fn bootstrap() -> AsyncStream {
     // ];
     // we use "udp" here to let our url library know that we want to create a *UDP* async stream
     let bootstrap = Url::new("udp://router.bittorrent.com:6881").unwrap();
-    
+
     AsyncStream::new(bootstrap).await.unwrap()
 }
 
@@ -92,7 +94,7 @@ mod tests {
 
         if let BTypes::DICT(d) = decoded {
             if d.get("y").is_some() {
-                return ;
+                return;
             } else {
                 panic!("Key 'y' not present.");
             }
