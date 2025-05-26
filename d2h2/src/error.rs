@@ -1,11 +1,15 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::SystemTimeError};
 
 #[derive(Debug)]
 pub enum DHTError {
+    // DHT Query errors
     GenericError,
     ServerError,
     ProtocError,
     UnknownMethod,
+
+    // other errors
+    FailedSystemTimeGen(SystemTimeError),
 }
 
 impl Display for DHTError {
@@ -18,6 +22,15 @@ impl Display for DHTError {
                 "Error: 203 Protocol Error: Malformed Packet or Invalid Arguments"
             ),
             DHTError::UnknownMethod => write!(f, "Error: 204 Protocol Error: Unknown Method"),
+            DHTError::FailedSystemTimeGen(e) => {
+                write!(f, "Error: Failed to generate system time: {}", e)
+            }
         }
+    }
+}
+
+impl From<SystemTimeError> for DHTError {
+    fn from(value: SystemTimeError) -> Self {
+        Self::FailedSystemTimeGen(value)
     }
 }

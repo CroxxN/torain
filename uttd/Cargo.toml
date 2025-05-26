@@ -3,8 +3,8 @@ name = "uttd"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies.tinymt]
-path = "../tinymt"
+[dependencies.crypto]
+path = "../crypto"
 
 [dependencies]
 tokio = { version = "1.41.1", features = ["full"] }

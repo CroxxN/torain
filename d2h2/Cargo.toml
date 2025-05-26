@@ -3,8 +3,8 @@ name = "d2h2"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies.tinymt]
-path = "../tinymt"
+[dependencies.crypto]
+path = "../crypto"
 
 [dependencies.uttd]
 path = "../uttd"

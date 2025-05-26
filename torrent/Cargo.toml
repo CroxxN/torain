@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies.bencode]
 path = "../bencode"
 
-
+[dependencies.crypto]
+path = "../crypto"
 
 [dependencies.uttd]
 path = "../uttd"
