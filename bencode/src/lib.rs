@@ -1,4 +1,4 @@
 pub mod bencode;
-pub mod bencoen;
+pub mod benencode;
 pub mod error;
 pub mod utils;

@@ -6,11 +6,11 @@ use crate::bencode::BTypes;
 use std::collections::BTreeMap;
 
 #[derive(Debug)]
-pub struct Bencoen {
+pub struct BenEncode {
     inner: BTypes,
 }
 
-impl Bencoen {
+impl BenEncode {
     pub fn new(key: String, value: BTypes) -> Self {
         let mut dict: BTreeMap<String, BTypes> = BTreeMap::new();
         dict.insert(key, value);
@@ -94,10 +94,10 @@ mod test {
 
     use crate::{
         bencode::BTypes,
-        bencoen::{ser_dict, ser_list, ser_string},
+        benencode::{ser_dict, ser_list, ser_string},
     };
 
-    use super::{ser, Bencoen};
+    use super::{ser, BenEncode};
 
     #[test]
     fn int() {
@@ -154,7 +154,7 @@ mod test {
 
     #[test]
     fn serialize() {
-        let ben = Bencoen::new("h".to_string(), BTypes::INT(16));
+        let ben = BenEncode::new("h".to_string(), BTypes::INT(16));
 
         let res = ben.get_inner();
 

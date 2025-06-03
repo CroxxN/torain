@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::error;
 use bencode;
 use bencode::bencode::BTypes;
-use bencode::bencoen::ser;
+use bencode::benencode::ser;
 use bencode::error::DecodeError;
 use bencode::utils::decode_option;
 use crypto::sha1::Sha1;
