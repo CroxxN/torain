@@ -1,7 +1,7 @@
 **/target
 *.torrent
 .idea
-
+Cargo.lock
 
 # Added by cargo
 
