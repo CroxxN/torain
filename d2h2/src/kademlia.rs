@@ -31,7 +31,7 @@ pub struct DHT {
 impl DHT {
     fn new() -> Result<Self, DHTError> {
         // Generate node_id using two phases
-        // BEP_0005 recommends entory for node id generation which is
+        // BEP_0005 recommends entropy for node id generation which is
         // achieved here by two phase involving current duration in seconds from
         // standard unix time.
         // The duration is multiplied by pseudo-random TinyMT number using the duration

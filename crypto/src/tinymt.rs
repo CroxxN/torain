@@ -98,7 +98,7 @@ impl TinyMT {
 
 #[cfg(test)]
 mod test {
-    use crate::TinyMT;
+    use crate::tinymt::TinyMT;
 
     #[test]
     fn rand() {
