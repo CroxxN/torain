@@ -6,5 +6,6 @@
 // = more
 
 mod error;
+mod find_node;
 mod kademlia;
 mod request;

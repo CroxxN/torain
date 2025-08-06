@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 // which type of query is this packet?
+// TODO: for now, we're only concerned with sending
+// FindNode queries from OUR side. We disregard all incoming requests for now.
 #[derive(Debug, PartialEq)]
 pub enum Query {
     PING,
