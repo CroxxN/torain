@@ -1,3 +1,5 @@
+use bencode::error;
+use bencode::utils;
 use std::{fmt::Display, time::SystemTimeError};
 
 #[derive(Debug)]
@@ -32,5 +34,25 @@ impl Display for DHTError {
 impl From<SystemTimeError> for DHTError {
     fn from(value: SystemTimeError) -> Self {
         Self::FailedSystemTimeGen(value)
+    }
+}
+
+#[derive(Debug)]
+pub enum SerdeError {
+    ParsingBencode(error::DecodeError),
+    KeyError(utils::BencodeErr),
+    BencodeGenericError,
+    UnknownDHTError,
+}
+
+impl From<error::DecodeError> for SerdeError {
+    fn from(value: error::DecodeError) -> Self {
+        Self::ParsingBencode(value)
+    }
+}
+
+impl From<bencode::utils::BencodeErr> for SerdeError {
+    fn from(value: bencode::utils::BencodeErr) -> Self {
+        Self::KeyError(value)
     }
 }
