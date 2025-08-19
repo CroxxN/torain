@@ -11,7 +11,6 @@ use error::D2H2ClientError;
 use uttd::url::Url;
 
 mod error;
-mod find_node;
 mod kademlia;
 mod request;
 mod serde;
