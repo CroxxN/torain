@@ -1,6 +1,7 @@
 use bencode::error;
 use bencode::utils;
 use std::{fmt::Display, time::SystemTimeError};
+use uttd::error::UrlError;
 
 #[derive(Debug)]
 pub enum DHTError {
@@ -54,5 +55,17 @@ impl From<error::DecodeError> for SerdeError {
 impl From<bencode::utils::BencodeErr> for SerdeError {
     fn from(value: bencode::utils::BencodeErr) -> Self {
         Self::KeyError(value)
+    }
+}
+
+#[derive(Debug)]
+pub enum D2H2ClientError {
+    MoveOutofArcError,
+    UrlFormError(UrlError),
+}
+
+impl From<UrlError> for D2H2ClientError {
+    fn from(value: UrlError) -> Self {
+        Self::UrlFormError(value)
     }
 }

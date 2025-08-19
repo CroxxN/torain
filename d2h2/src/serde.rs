@@ -9,6 +9,12 @@ pub struct KRPC {
     pub message_type: MessageType,
 }
 
+impl Default for KRPC {
+    fn default() -> Self {
+        todo!()
+    }
+}
+
 #[derive(Debug)]
 pub enum MessageType {
     Query(Query),
@@ -77,4 +83,11 @@ pub fn deserialize_dht(packet: Vec<u8>) -> Result<KRPC, error::SerdeError> {
 
     // TODO:
     todo!()
+}
+
+pub fn serializez(ds: KRPC) -> Box<[u8]> {
+    let raw = vec![0u8; 10]; // TODO: change '10' to something else
+
+    // todo!();
+    raw.into_boxed_slice()
 }
