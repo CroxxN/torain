@@ -11,8 +11,8 @@ It aims to be a complete torrent client with custom implementation of all useful
 - [x] URL Library
 - [x] HTTP Library
 - [x] TinyMT PRNG
+- [x] uTP Protocol
 - [ ] Bittorrent two-way web-server
-- [ ] uTP Protocol
 - [ ] DHT Library
 - [ ] handle magnet links
 - [ ] download files
