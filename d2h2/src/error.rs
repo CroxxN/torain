@@ -46,14 +46,25 @@ pub enum SerdeError {
     UnknownDHTError,
 }
 
+impl Display for SerdeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParsingBencode(e) => write!(f, "Error Parsing Bencode: {e}"),
+            Self::KeyError(e) => write!(f, "Key error: {e}"),
+            Self::BencodeGenericError => write!(f, "DHT Serde: Generic Error Parsing Bencode"),
+            Self::UnknownDHTError => write!(f, "Error: Unknown DHT Error Encountered"),
+        }
+    }
+}
+
 impl From<error::DecodeError> for SerdeError {
     fn from(value: error::DecodeError) -> Self {
         Self::ParsingBencode(value)
     }
 }
 
-impl From<bencode::utils::BencodeErr> for SerdeError {
-    fn from(value: bencode::utils::BencodeErr) -> Self {
+impl From<utils::BencodeErr> for SerdeError {
+    fn from(value: utils::BencodeErr) -> Self {
         Self::KeyError(value)
     }
 }
@@ -62,6 +73,17 @@ impl From<bencode::utils::BencodeErr> for SerdeError {
 pub enum D2H2ClientError {
     MoveOutofArcError,
     UrlFormError(UrlError),
+}
+
+impl Display for D2H2ClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            D2H2ClientError::MoveOutofArcError => {
+                write!(f, "Error: Breaking Error: Moving out of Arc")
+            }
+            D2H2ClientError::UrlFormError(e) => write!(f, "Invalid Url: {e}"),
+        }
+    }
 }
 
 impl From<UrlError> for D2H2ClientError {
