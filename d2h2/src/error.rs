@@ -44,6 +44,9 @@ pub enum SerdeError {
     KeyError(utils::BencodeErr),
     BencodeGenericError,
     UnknownDHTError,
+    NoValidIDPresent,
+    // TODO: Remove
+    UnimplementedQueryParsing,
 }
 
 impl Display for SerdeError {
@@ -53,6 +56,12 @@ impl Display for SerdeError {
             Self::KeyError(e) => write!(f, "Key error: {e}"),
             Self::BencodeGenericError => write!(f, "DHT Serde: Generic Error Parsing Bencode"),
             Self::UnknownDHTError => write!(f, "Error: Unknown DHT Error Encountered"),
+            Self::NoValidIDPresent => write!(f, "Error: No valid id present on the packet"),
+            // TODO: Remove
+            Self::UnimplementedQueryParsing => write!(
+                f,
+                "Warning: Implemented DHT message parsing. You should NOT have reached this"
+            ),
         }
     }
 }
