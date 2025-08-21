@@ -171,6 +171,8 @@ pub fn deserialize_dht(packet: Vec<u8>) -> Result<KRPC, error::SerdeError> {
     todo!()
 }
 
+// TODO: write some tests for the deserializer
+
 pub fn serialize(ds: KRPC) -> Box<[u8]> {
     let raw = vec![0u8; 10]; // TODO: change '10' to something else
 
