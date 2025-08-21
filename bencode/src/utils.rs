@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::bencode::{self, BTypes};
 use uttd::{error::UrlError, url::Url};
 
@@ -5,6 +7,15 @@ use uttd::{error::UrlError, url::Url};
 pub enum BencodeErr {
     Berr,
     InvalidUrl,
+}
+
+impl Display for BencodeErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Berr => write!(f, "Generic Bencode Error"),
+            Self::InvalidUrl => write!(f, "Error: Invalid Error Encountered"),
+        }
+    }
 }
 
 pub fn bcode_to_u8(bcode: &str) -> impl Iterator<Item = u8> + '_ {
