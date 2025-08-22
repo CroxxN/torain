@@ -220,6 +220,7 @@ mod test {
 
     // // WARNING: This may fail
     #[test]
+    #[ignore = "This may fail because peers are notoriously unreliable. A peer may not be valid all the time."]
     fn connect_test() {
         let peer = "112.156.141.234:4681";
 

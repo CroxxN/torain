@@ -67,13 +67,13 @@ impl<'a> Url {
     }
     /// Create a `Url` from bytes in form of [x, x, x, x]
     /// IPv4
-    pub fn from_ip_bytes(ip: &'a [u8], port: u16) -> Self {
+    pub fn from_ip_bytes(ip: &'a [u8], port: u16, scheme: Scheme) -> Self {
         let mut ip_addr = String::new();
         ip.iter().for_each(|x| ip_addr.push_str(&format!("{}.", x)));
         ip_addr.pop();
         let ip = format!("{}:{}", ip_addr, port);
         Self {
-            scheme: Scheme::HTTP,
+            scheme,
             host: ip,
             location: "/".to_owned(),
         }

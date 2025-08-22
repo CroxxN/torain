@@ -3,18 +3,12 @@
 use crate::error::{self, DHTError};
 use ::bencode::utils::vec_to_string;
 use bencode::{bencode, BTypes};
-use uttd::url::Url;
+use uttd::url::{Scheme, Url};
 
 #[derive(Debug)]
 pub struct KRPC {
     pub transaction_id: String,
     pub message_type: MessageType,
-}
-
-impl Default for KRPC {
-    fn default() -> Self {
-        todo!()
-    }
 }
 
 #[derive(Debug)]
@@ -35,8 +29,17 @@ pub struct Response {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ResponseType {
-    Node(Vec<Url>),
-    Values(Vec<Url>),
+    // we use box here because after the `Url` and `ResponseNode` are constructed,
+    // we don't need to add to them or remove from them. We can just drop them after
+    // we've consumed them.
+    Node(Box<[ResponseNode]>),
+    Values(Box<[Url]>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ResponseNode {
+    id: [u8; 20],
+    node: Url,
 }
 
 #[derive(Debug)]
@@ -123,24 +126,32 @@ impl KRPC {
                 };
 
                 if let Some(BTypes::BSTRING(bs)) = d.get("nodes") {
-                    let ips: Vec<Url> = bs
-                        .chunks(6)
+                    let ips = bs
+                        .chunks(26)
                         .map(|x| {
-                            let ip: [u8; 4] = x[0..4].try_into().unwrap();
-                            let port = u16::from_be_bytes(x[4..6].try_into().unwrap());
-                            Url::from_ip_bytes(&ip, port)
+                            // todo: use this
+                            let node_id: [u8; 20] = x[0..20].try_into().unwrap();
+                            let ip: [u8; 4] = x[20..24].try_into().unwrap();
+                            let port = u16::from_be_bytes(x[24..26].try_into().unwrap());
+                            ResponseNode {
+                                id: node_id,
+                                node: Url::from_ip_bytes(&ip, port, Scheme::UDP),
+                            }
                         })
                         .collect();
                     resp.response = Some(ResponseType::Node(ips));
-                } else if let Some(BTypes::BSTRING(bs)) = d.get("values") {
+                } else if let Some(BTypes::LIST(l)) = d.get("values") {
                     // create urls from the compact url info contained in bs
                     // this containes the actual peers for the find_peers query
-                    let ips: Vec<Url> = bs
-                        .chunks(6)
-                        .map(|x| {
-                            let ip: [u8; 4] = x[0..4].try_into().unwrap();
-                            let port = u16::from_be_bytes(x[4..6].try_into().unwrap());
-                            Url::from_ip_bytes(&ip, port)
+                    let ips = l
+                        .into_iter()
+                        .filter_map(|b| match b {
+                            BTypes::BSTRING(bs) if bs.len() >= 6 => {
+                                let ip: [u8; 4] = bs[0..4].try_into().unwrap();
+                                let port = u16::from_be_bytes(bs[4..6].try_into().unwrap());
+                                Some(Url::from_ip_bytes(&ip, port, Scheme::UDP))
+                            }
+                            _ => None,
                         })
                         .collect();
                     resp.response = Some(ResponseType::Values(ips));
@@ -175,6 +186,7 @@ impl KRPC {
 pub fn serialize(ds: KRPC) -> Box<[u8]> {
     let raw = vec![0u8; 10]; // TODO: change '10' to something else
 
+    // CONTINUE:
     // todo!();
     raw.into_boxed_slice()
 }
@@ -183,6 +195,8 @@ pub fn serialize(ds: KRPC) -> Box<[u8]> {
 //
 #[cfg(test)]
 mod test {
+    use uttd::url::Scheme;
+
     use super::{MessageType, KRPC};
     use crate::serde::Response;
 
@@ -219,6 +233,44 @@ mod test {
             assert!(r.response.as_ref() == None);
         } else {
             panic!("Error")
+        }
+    }
+    #[test]
+    fn deserialize_peers() {
+        let bytes =
+            b"d1:rd2:id20:abcdefghij01234567895:token8:deadbeef6:valuesl6:\x7f\x00\x00\x01\x1a\xe1ee1:t2:aa1:y1:re"
+                .to_vec();
+        let res = KRPC::deserialize_bytes(bytes).unwrap();
+        if let MessageType::Response(r) = res.message_type {
+            assert_eq!(r.id, "abcdefghij0123456789".to_string());
+            if let Some(super::ResponseType::Values(nodes)) = r.response {
+                assert_eq!(nodes[0].host, "127.0.0.1:6881");
+                assert_eq!(nodes[0].scheme, Scheme::UDP);
+                assert_eq!(nodes[0].port(), 6881);
+            } else {
+                panic!("Message Response Type is not 'find_node': {:?}", r)
+            }
+        } else {
+            panic!("Message Type is not response")
+        }
+    }
+    #[test]
+    fn deserialize_nodes() {
+        let bytes =
+            b"d1:rd2:id20:abcdefghij01234567895:nodes26:00000000000000000001\x7f\x00\x00\x01\x1a\xe1e1:t2:aa1:y1:re"
+                .to_vec();
+        let res = KRPC::deserialize_bytes(bytes).unwrap();
+        if let MessageType::Response(r) = res.message_type {
+            if let Some(super::ResponseType::Node(nodes)) = r.response {
+                assert_eq!(&nodes[0].id, b"00000000000000000001");
+                assert_eq!(nodes[0].node.host, "127.0.0.1:6881");
+                assert_eq!(nodes[0].node.scheme, Scheme::UDP);
+                assert_eq!(nodes[0].node.port(), 6881);
+            } else {
+                panic!("Message Response Type is not 'find_node': {:?}", r)
+            }
+        } else {
+            panic!("Message Type is not response")
         }
     }
 }
