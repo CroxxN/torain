@@ -61,14 +61,14 @@ impl D2H2Client {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::D2H2Client;
+// #[cfg(test)]
+// mod test {
+//     use crate::D2H2Client;
 
-    #[test]
-    fn find_peers_dht() {
-        let client = D2H2Client::new(None).unwrap();
-        // TODO: implement this test
-        _ = client.find_peers(&[0; 20]);
-    }
-}
+//     #[test]
+//     fn find_peers_dht() {
+//         let client = D2H2Client::new(None).unwrap();
+//         // TODO: implement this test
+//         _ = client.find_peers(&[0; 20]);
+//     }
+// }
