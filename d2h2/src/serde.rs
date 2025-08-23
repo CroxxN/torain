@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables)]
 
-use std::{collections::BTreeMap, hash::Hash};
+use std::collections::BTreeMap;
 
 use crate::error::{self, DHTError};
 use ::bencode::utils::vec_to_string;
