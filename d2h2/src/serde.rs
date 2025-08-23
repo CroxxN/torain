@@ -1,5 +1,7 @@
 #![allow(dead_code, unused_variables)]
 
+use std::{collections::BTreeMap, hash::Hash};
+
 use crate::error::{self, DHTError};
 use ::bencode::utils::vec_to_string;
 use bencode::{bencode, BTypes};
@@ -44,15 +46,76 @@ pub struct ResponseNode {
 
 #[derive(Debug)]
 pub struct Query {
-    method_name: String,
+    method_name: QueryType,
     // A dictionary of btypes for named argument pairs. Useful for later serialization
     // Provide a utility function to parse these arguments
-    arguments: BTypes,
+    // TODO: maybe use Btrees instead
+    arguments: QueryDataTypes,
+}
+
+#[derive(Debug)]
+pub enum QueryType {
+    Ping,
+    FindNode,
+    FindPeer,
+    AnnouncePeer,
+}
+
+#[derive(Debug)]
+pub enum QueryDataTypes {
+    QVec(Box<[u8]>),
+    QDict(BTreeMap<String, QueryDataTypes>),
 }
 
 // INFO: de
 // TODO: maybe add option disable unrelated packet processing for client mode for now?
 impl KRPC {
+    pub fn new(transaction_id: String, method: QueryType, id: &[u8; 20]) -> Self {
+        let mut arguments_a = BTreeMap::new();
+        let mut a_argument_b = BTreeMap::new();
+
+        let q_name: Vec<u8> = match method {
+            QueryType::Ping => "ping".into(),
+            QueryType::FindNode => "find_node".into(),
+            QueryType::FindPeer => "get_peers".into(),
+            QueryType::AnnouncePeer => "announce_peer".into(),
+        };
+
+        a_argument_b.insert("id".into(), QueryDataTypes::QVec(id.to_vec().into()));
+        arguments_a.insert("a".into(), QueryDataTypes::QDict(a_argument_b));
+        arguments_a.insert("y".into(), QueryDataTypes::QVec("q".as_bytes().into()));
+        arguments_a.insert("q".into(), QueryDataTypes::QVec(q_name.into()));
+        // arguments.
+        let query = Query {
+            method_name: method,
+            arguments: QueryDataTypes::QDict(arguments_a),
+        };
+        Self {
+            transaction_id,
+            message_type: MessageType::Query(query),
+        }
+    }
+
+    // TODO: think of a better way to handle arguments
+    pub fn set_token(&mut self, token: &str) {
+        // todo: add pattern matching
+        if let MessageType::Query(q) = &mut self.message_type {
+            match &mut q.arguments {
+                QueryDataTypes::QDict(qd) => {
+                    if let Some(a) = qd.get_mut("a") {
+                        if let QueryDataTypes::QDict(b) = a {
+                            b.insert(
+                                "token".into(),
+                                QueryDataTypes::QVec(token.as_bytes().into()),
+                            );
+                        }
+                    }
+                }
+                _ => unimplemented!(),
+            }
+        }
+    }
+
     pub fn deserialize_bytes(packet: Vec<u8>) -> Result<KRPC, error::SerdeError> {
         let deserialized = if let BTypes::DICT(d) = bencode::decode(&mut packet.into_iter())? {
             d
