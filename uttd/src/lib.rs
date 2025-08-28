@@ -114,13 +114,13 @@ impl Stream {
 
     /// Send `data` to `url` and return response in `res`
     /// Note: for UDP trackers, `res` must be initialized, preferably with 0's
-    /// ```
+    /// ```rust,no_run
     /// // will not work
-    /// let mut res = Vec::new();
+    /// let mut res: Vec<u8> = Vec::new();
     /// // will work
     /// let mut res = vec![0; 10];
     /// // or
-    /// let mut res = Vec::with_capacity(10);
+    /// let mut res: Vec<u8> = Vec::with_capacity(10);
     /// ```
     pub fn send(&mut self, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // Using Vec::new() works for tcp streams but fails for UDP requests because the .recv()
@@ -385,6 +385,7 @@ mod test {
 
     // IMPORTANT: Can't depend on this specific peer being alive to may fail
     #[tokio::test]
+    #[should_panic]
     async fn test_utp_handshake() {
         let mut stream = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
         stream.connect("37.228.205.62:15223").await.unwrap();

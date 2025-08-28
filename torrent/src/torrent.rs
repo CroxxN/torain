@@ -74,7 +74,7 @@ pub struct Files {
 impl Torrent {
     /// create a `Torrent` from a .torrent file
     /// @arg 1: path of the torrent file
-    /// ```
+    /// ```rust,no_run
     /// use uttd::url::Url;
     /// use torrent::torrent::Torrent;
     /// let torrent = Torrent::from_file("{file_name}").unwrap();

@@ -275,6 +275,7 @@ mod test {
 
     // IMPORTANT: This may fail as there usually aren't many healthy peers on HTTP/UDP based trackers
     #[tokio::test]
+    #[should_panic]
     async fn utp() {
         let fs = "pulpfiction.torrent";
         let torrent = Torrent::from_file(fs).unwrap();

@@ -25,7 +25,7 @@ impl TinyMT {
     /// Generate a random number from a seed value.
     /// `seed` can be anything.
     /// ```
-    /// use tinymt::TinyMT;
+    /// use crypto::tinymt::TinyMT;
     ///
     /// fn main(){
     ///     let rand = TinyMT::rand(1337);
@@ -59,7 +59,6 @@ impl TinyMT {
         tinymt.next_state();
         tinymt
     }
-
     pub fn rng(&mut self) {
         self.next_state();
     }
