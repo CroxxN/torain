@@ -45,6 +45,7 @@ pub enum SerdeError {
     BencodeGenericError,
     UnknownDHTError,
     NoValidIDPresent,
+    InvalidMessageType,
     // TODO: Remove
     UnimplementedQueryParsing,
 }
@@ -57,6 +58,7 @@ impl Display for SerdeError {
             Self::BencodeGenericError => write!(f, "DHT Serde: Generic Error Parsing Bencode"),
             Self::UnknownDHTError => write!(f, "Error: Unknown DHT Error Encountered"),
             Self::NoValidIDPresent => write!(f, "Error: No valid id present on the packet"),
+            Self::InvalidMessageType => write!(f, "Error: Invalid message type"),
             // TODO: Remove
             Self::UnimplementedQueryParsing => write!(
                 f,

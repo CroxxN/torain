@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::error::{self, DHTError};
+use crate::error::{self, DHTError, SerdeError};
 use ::bencode::utils::vec_to_string;
 use bencode::{bencode, BTypes};
 use uttd::url::{Scheme, Url};
@@ -20,6 +20,12 @@ pub enum MessageType {
     Error(error::DHTError),
 }
 
+impl MessageType {
+    fn from(mtype: MessageType) {
+        todo!()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Response {
     // TODO: use &[u8] instead of String?
@@ -27,6 +33,32 @@ pub struct Response {
     // for find_node responses we don't get a token response type
     token: Option<String>,
     response: Option<ResponseType>,
+}
+
+impl Response {
+    fn new(id: String, resp_type: Option<ResponseType>) -> Self {
+        if let Some(r) = resp_type {
+            // TODO: do something
+            match r {
+                ResponseType::Node(n) => {
+                    todo!()
+                }
+                ResponseType::Values(v) => {
+                    todo!()
+                }
+            }
+        } else {
+            return Response {
+                id,
+                token: None,
+                response: None,
+            };
+        }
+    }
+    // TODO: implement this
+    fn incr_token(&mut self) {
+        // self.token += 1;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -70,6 +102,16 @@ pub enum QueryDataTypes {
 // INFO: de
 // TODO: maybe add option disable unrelated packet processing for client mode for now?
 impl KRPC {
+    fn from_error(transaction_id: String, mtype: MessageType) -> Result<KRPC, SerdeError> {
+        if let MessageType::Error(e) = mtype {
+            return Ok(KRPC {
+                transaction_id,
+                message_type: MessageType::Error(e),
+            });
+        } else {
+            return Err(SerdeError::InvalidMessageType);
+        }
+    }
     pub fn new(transaction_id: String, method: QueryType, id: &[u8; 20]) -> Self {
         let mut arguments_a = BTreeMap::new();
         let mut a_argument_b = BTreeMap::new();
@@ -85,6 +127,11 @@ impl KRPC {
         arguments_a.insert("a".into(), QueryDataTypes::QDict(a_argument_b));
         arguments_a.insert("y".into(), QueryDataTypes::QVec("q".as_bytes().into()));
         arguments_a.insert("q".into(), QueryDataTypes::QVec(q_name.into()));
+        // TODO: add key "t" here?
+        arguments_a.insert(
+            "t".into(),
+            QueryDataTypes::QVec(transaction_id.as_bytes().into()),
+        );
         // arguments.
         let query = Query {
             method_name: method,
@@ -246,8 +293,24 @@ impl KRPC {
         todo!()
     }
 }
+
+// TODO: probably make this a macro_rules!
 pub fn serialize(ds: KRPC) -> Box<[u8]> {
-    let raw = vec![0u8; 10]; // TODO: change '10' to something else
+    let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
+
+    if let MessageType::Query(q) = ds.message_type {
+        if let QueryDataTypes::QDict(qd) = q.arguments {
+            // let res = BTypes::from(value)
+            for (id, value) in qd.into_iter() {
+                // TODO: cotinue
+                raw.extend_from_slice(id.as_bytes());
+                // todo!()
+            }
+        }
+    } else {
+        // throw error
+        todo!()
+    }
 
     // CONTINUE:
     // todo!();
@@ -335,5 +398,13 @@ mod test {
         } else {
             panic!("Message Type is not response")
         }
+    }
+
+    #[test]
+    fn serialize() {
+        let krpc = KRPC::new("aa".into(), super::QueryType::Ping, &[0; 20]);
+        // let bcode: BTypes = krpc.bencode();
+        // let serialized = bcode.raw();
+        dbg!(krpc);
     }
 }
