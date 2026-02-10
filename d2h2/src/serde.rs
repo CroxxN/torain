@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::{self, DHTError, SerdeError};
+use ::bencode::benencode;
 use ::bencode::utils::vec_to_string;
 use bencode::{bencode, BTypes};
 use uttd::url::{Scheme, Url};
@@ -29,10 +30,10 @@ impl MessageType {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Response {
     // TODO: use &[u8] instead of String?
-    id: String,
+    pub id: String,
     // for find_node responses we don't get a token response type
-    token: Option<String>,
-    response: Option<ResponseType>,
+    pub token: Option<String>,
+    pub response: Option<ResponseType>,
 }
 
 impl Response {
@@ -72,8 +73,8 @@ pub enum ResponseType {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ResponseNode {
-    id: [u8; 20],
-    node: Url,
+    pub id: [u8; 20],
+    pub node: Url,
 }
 
 #[derive(Debug)]
@@ -99,7 +100,21 @@ pub enum QueryDataTypes {
     QDict(BTreeMap<String, QueryDataTypes>),
 }
 
-// INFO: de
+impl From<QueryDataTypes> for BTypes {
+    fn from(value: QueryDataTypes) -> Self {
+        match value {
+            QueryDataTypes::QVec(v) => BTypes::BSTRING(v.into()),
+            QueryDataTypes::QDict(d) => {
+                let mut map = BTreeMap::new();
+                for (k, v) in d {
+                    map.insert(k, BTypes::from(v));
+                }
+                BTypes::DICT(map)
+            }
+        }
+    }
+}
+
 // TODO: maybe add option disable unrelated packet processing for client mode for now?
 impl KRPC {
     fn from_error(transaction_id: String, mtype: MessageType) -> Result<KRPC, SerdeError> {
@@ -159,6 +174,32 @@ impl KRPC {
                     }
                 }
                 _ => unimplemented!(),
+            }
+        }
+    }
+
+    pub fn set_info_hash(&mut self, info_hash: &[u8; 20]) {
+        if let MessageType::Query(q) = &mut self.message_type {
+            if let QueryDataTypes::QDict(qd) = &mut q.arguments {
+                if let Some(QueryDataTypes::QDict(a)) = qd.get_mut("a") {
+                    a.insert(
+                        "info_hash".into(),
+                        QueryDataTypes::QVec(info_hash.to_vec().into()),
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn set_target(&mut self, target: &[u8; 20]) {
+        if let MessageType::Query(q) = &mut self.message_type {
+            if let QueryDataTypes::QDict(qd) = &mut q.arguments {
+                if let Some(QueryDataTypes::QDict(a)) = qd.get_mut("a") {
+                    a.insert(
+                        "target".into(),
+                        QueryDataTypes::QVec(target.to_vec().into()),
+                    );
+                }
             }
         }
     }
@@ -296,25 +337,13 @@ impl KRPC {
 
 // TODO: probably make this a macro_rules!
 pub fn serialize(ds: KRPC) -> Box<[u8]> {
-    let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
-
     if let MessageType::Query(q) = ds.message_type {
-        if let QueryDataTypes::QDict(qd) = q.arguments {
-            // let res = BTypes::from(value)
-            for (id, value) in qd.into_iter() {
-                // TODO: cotinue
-                raw.extend_from_slice(id.as_bytes());
-                // todo!()
-            }
-        }
+        let btypes = BTypes::from(q.arguments);
+        benencode::ser(&btypes).into_boxed_slice()
     } else {
         // throw error
         todo!()
     }
-
-    // CONTINUE:
-    // todo!();
-    raw.into_boxed_slice()
 }
 
 // TODO: write some tests for the deserializer
@@ -401,10 +430,38 @@ mod test {
     }
 
     #[test]
-    fn serialize() {
+    fn serialize_ping() {
         let krpc = KRPC::new("aa".into(), super::QueryType::Ping, &[0; 20]);
-        // let bcode: BTypes = krpc.bencode();
-        // let serialized = bcode.raw();
-        dbg!(krpc);
+        let serialized = super::serialize(krpc);
+        // verify it's valid bencode by deserializing back
+        let decoded = bencode::bencode::decode(&mut serialized.to_vec().into_iter()).unwrap();
+        if let bencode::bencode::BTypes::DICT(d) = decoded {
+            // should have keys: a, q, t, y
+            assert!(d.contains_key("a"));
+            assert!(d.contains_key("q"));
+            assert!(d.contains_key("t"));
+            assert!(d.contains_key("y"));
+        } else {
+            panic!("Serialized KRPC is not a dict")
+        }
+    }
+
+    #[test]
+    fn serialize_roundtrip_find_node() {
+        let node_id = b"abcdefghij0123456789";
+        let krpc = KRPC::new("aa".into(), super::QueryType::FindNode, node_id);
+        let serialized = super::serialize(krpc);
+        // the serialized bytes should be valid bencode
+        let decoded = bencode::bencode::decode(&mut serialized.to_vec().into_iter()).unwrap();
+        if let bencode::bencode::BTypes::DICT(d) = decoded {
+            let q: String = d.get("q").unwrap().try_into().unwrap();
+            assert_eq!(q, "find_node");
+            let y: String = d.get("y").unwrap().try_into().unwrap();
+            assert_eq!(y, "q");
+            let t: String = d.get("t").unwrap().try_into().unwrap();
+            assert_eq!(t, "aa");
+        } else {
+            panic!("Serialized KRPC is not a dict")
+        }
     }
 }

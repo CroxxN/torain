@@ -84,6 +84,10 @@ impl From<utils::BencodeErr> for SerdeError {
 pub enum D2H2ClientError {
     MoveOutofArcError,
     UrlFormError(UrlError),
+    NetworkError(uttd::UttdError),
+    Serde(SerdeError),
+    DHT(DHTError),
+    LookupTimeout,
 }
 
 impl Display for D2H2ClientError {
@@ -93,6 +97,10 @@ impl Display for D2H2ClientError {
                 write!(f, "Error: Breaking Error: Moving out of Arc")
             }
             D2H2ClientError::UrlFormError(e) => write!(f, "Invalid Url: {e}"),
+            D2H2ClientError::NetworkError(e) => write!(f, "Network Error: {e:?}"),
+            D2H2ClientError::Serde(e) => write!(f, "Serde Error: {e}"),
+            D2H2ClientError::DHT(e) => write!(f, "DHT Error: {e}"),
+            D2H2ClientError::LookupTimeout => write!(f, "Error: DHT lookup timed out"),
         }
     }
 }
@@ -100,5 +108,23 @@ impl Display for D2H2ClientError {
 impl From<UrlError> for D2H2ClientError {
     fn from(value: UrlError) -> Self {
         Self::UrlFormError(value)
+    }
+}
+
+impl From<uttd::UttdError> for D2H2ClientError {
+    fn from(value: uttd::UttdError) -> Self {
+        Self::NetworkError(value)
+    }
+}
+
+impl From<SerdeError> for D2H2ClientError {
+    fn from(value: SerdeError) -> Self {
+        Self::Serde(value)
+    }
+}
+
+impl From<DHTError> for D2H2ClientError {
+    fn from(value: DHTError) -> Self {
+        Self::DHT(value)
     }
 }
