@@ -46,8 +46,6 @@ pub enum SerdeError {
     UnknownDHTError,
     NoValidIDPresent,
     InvalidMessageType,
-    // TODO: Remove
-    UnimplementedQueryParsing,
 }
 
 impl Display for SerdeError {
@@ -59,11 +57,6 @@ impl Display for SerdeError {
             Self::UnknownDHTError => write!(f, "Error: Unknown DHT Error Encountered"),
             Self::NoValidIDPresent => write!(f, "Error: No valid id present on the packet"),
             Self::InvalidMessageType => write!(f, "Error: Invalid message type"),
-            // TODO: Remove
-            Self::UnimplementedQueryParsing => write!(
-                f,
-                "Warning: Implemented DHT message parsing. You should NOT have reached this"
-            ),
         }
     }
 }

@@ -21,12 +21,6 @@ pub enum MessageType {
     Error(error::DHTError),
 }
 
-impl MessageType {
-    fn from(mtype: MessageType) {
-        todo!()
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Response {
     // TODO: use &[u8] instead of String?
@@ -37,28 +31,45 @@ pub struct Response {
 }
 
 impl Response {
-    fn new(id: String, resp_type: Option<ResponseType>) -> Self {
-        if let Some(r) = resp_type {
-            // TODO: do something
-            match r {
-                ResponseType::Node(n) => {
-                    todo!()
-                }
-                ResponseType::Values(v) => {
-                    todo!()
-                }
-            }
-        } else {
-            return Response {
-                id,
-                token: None,
-                response: None,
-            };
+    pub fn new(id: String, token: Option<String>, resp_type: Option<ResponseType>) -> Self {
+        Response {
+            id,
+            token,
+            response: resp_type,
         }
     }
-    // TODO: implement this
-    fn incr_token(&mut self) {
-        // self.token += 1;
+
+    /// Serialize this response body into a BTypes::DICT suitable for the "r" key
+    fn to_btypes(&self) -> BTypes {
+        let mut r = BTreeMap::new();
+        r.insert("id".into(), BTypes::BSTRING(self.id.bytes().collect()));
+
+        if let Some(ref token) = self.token {
+            r.insert("token".into(), BTypes::BSTRING(token.bytes().collect()));
+        }
+
+        match &self.response {
+            Some(ResponseType::Node(nodes)) => {
+                // compact node info: 20-byte id + 4-byte IP + 2-byte port per node
+                let mut compact = Vec::with_capacity(nodes.len() * 26);
+                for node in nodes.iter() {
+                    compact.extend_from_slice(&node.id);
+                    compact.extend_from_slice(&compact_peer_bytes(&node.node));
+                }
+                r.insert("nodes".into(), BTypes::BSTRING(compact));
+            }
+            Some(ResponseType::Values(peers)) => {
+                // values: list of compact 6-byte peer info strings
+                let values: Vec<BTypes> = peers
+                    .iter()
+                    .map(|url| BTypes::BSTRING(compact_peer_bytes(url).to_vec()))
+                    .collect();
+                r.insert("values".into(), BTypes::LIST(values));
+            }
+            None => {}
+        }
+
+        BTypes::DICT(r)
     }
 }
 
@@ -79,11 +90,30 @@ pub struct ResponseNode {
 
 #[derive(Debug)]
 pub struct Query {
-    method_name: QueryType,
+    pub method_name: QueryType,
     // A dictionary of btypes for named argument pairs. Useful for later serialization
-    // Provide a utility function to parse these arguments
-    // TODO: maybe use Btrees instead
-    arguments: QueryDataTypes,
+    pub arguments: QueryDataTypes,
+}
+
+impl Query {
+    /// Extract a byte-slice argument from the "a" dict by key name.
+    /// Returns None if the key doesn't exist or isn't a QVec.
+    pub fn get_arg(&self, key: &str) -> Option<&[u8]> {
+        if let QueryDataTypes::QDict(ref outer) = self.arguments {
+            // arguments may be flat (from deserialized queries) or nested under "a" (from new())
+            // try flat first
+            if let Some(QueryDataTypes::QVec(v)) = outer.get(key) {
+                return Some(v);
+            }
+            // try nested under "a"
+            if let Some(QueryDataTypes::QDict(a)) = outer.get("a") {
+                if let Some(QueryDataTypes::QVec(v)) = a.get(key) {
+                    return Some(v);
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -160,16 +190,16 @@ impl KRPC {
 
     // TODO: think of a better way to handle arguments
     pub fn set_token(&mut self, token: &str) {
-        // todo: add pattern matching
+        self.set_token_bytes(token.as_bytes());
+    }
+
+    pub fn set_token_bytes(&mut self, token: &[u8]) {
         if let MessageType::Query(q) = &mut self.message_type {
             match &mut q.arguments {
                 QueryDataTypes::QDict(qd) => {
                     if let Some(a) = qd.get_mut("a") {
                         if let QueryDataTypes::QDict(b) = a {
-                            b.insert(
-                                "token".into(),
-                                QueryDataTypes::QVec(token.as_bytes().into()),
-                            );
+                            b.insert("token".into(), QueryDataTypes::QVec(token.to_vec().into()));
                         }
                     }
                 }
@@ -198,6 +228,33 @@ impl KRPC {
                     a.insert(
                         "target".into(),
                         QueryDataTypes::QVec(target.to_vec().into()),
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn set_port(&mut self, port: u16) {
+        if let MessageType::Query(q) = &mut self.message_type {
+            if let QueryDataTypes::QDict(qd) = &mut q.arguments {
+                if let Some(QueryDataTypes::QDict(a)) = qd.get_mut("a") {
+                    a.insert(
+                        "port".into(),
+                        QueryDataTypes::QVec(port.to_be_bytes().to_vec().into()),
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn set_implied_port(&mut self, implied: bool) {
+        if let MessageType::Query(q) = &mut self.message_type {
+            if let QueryDataTypes::QDict(qd) = &mut q.arguments {
+                if let Some(QueryDataTypes::QDict(a)) = qd.get_mut("a") {
+                    let val = if implied { 1u8 } else { 0u8 };
+                    a.insert(
+                        "implied_port".into(),
+                        QueryDataTypes::QVec(vec![val].into()),
                     );
                 }
             }
@@ -316,34 +373,115 @@ impl KRPC {
             }
         }
 
-        // TODO: we don't really care about this for now as we'll be mostly running in client mode
+        // Incoming query from another DHT node
         if &y == "q" {
-            // TODO: Remove
-            // let method_name: String = deserialized.get("q").unwrap().try_into()?;
-            // if let BTypes::DICT(d) = deserialized.get("q").unwrap() {
-            //     todo!()
-            // }
-            // todo!()
-            // TODO: Remove
-            return Err(error::SerdeError::UnimplementedQueryParsing);
+            let method_name: String = deserialized
+                .get("q")
+                .ok_or(SerdeError::BencodeGenericError)?
+                .try_into()?;
+            let method = match method_name.as_str() {
+                "ping" => QueryType::Ping,
+                "find_node" => QueryType::FindNode,
+                "get_peers" => QueryType::FindPeer,
+                "announce_peer" => QueryType::AnnouncePeer,
+                _ => return Err(SerdeError::InvalidMessageType),
+            };
+
+            // parse the "a" arguments dict into QueryDataTypes
+            let arguments = if let Some(BTypes::DICT(a_dict)) = deserialized.get("a") {
+                let mut qd = BTreeMap::new();
+                for (k, v) in a_dict {
+                    let qval = match v {
+                        BTypes::BSTRING(bs) => QueryDataTypes::QVec(bs.clone().into()),
+                        BTypes::DICT(inner) => {
+                            let mut inner_qd = BTreeMap::new();
+                            for (ik, iv) in inner {
+                                if let BTypes::BSTRING(ibs) = iv {
+                                    inner_qd.insert(
+                                        ik.clone(),
+                                        QueryDataTypes::QVec(ibs.clone().into()),
+                                    );
+                                }
+                            }
+                            QueryDataTypes::QDict(inner_qd)
+                        }
+                        _ => continue,
+                    };
+                    qd.insert(k.clone(), qval);
+                }
+                QueryDataTypes::QDict(qd)
+            } else {
+                QueryDataTypes::QDict(BTreeMap::new())
+            };
+
+            let query = Query {
+                method_name: method,
+                arguments,
+            };
+            return Ok(KRPC {
+                transaction_id,
+                message_type: MessageType::Query(query),
+            });
         }
 
-        // CONTINUE:
-
-        // TODO:
-        todo!()
+        Err(error::SerdeError::InvalidMessageType)
     }
+}
+
+/// Convert a Url's host:port into compact 6-byte peer info (4 IP + 2 port)
+fn compact_peer_bytes(url: &Url) -> [u8; 6] {
+    let mut out = [0u8; 6];
+    let (ip_str, port_str) = url.host.rsplit_once(':').unwrap_or((&url.host, "0"));
+    let port: u16 = port_str.parse().unwrap_or(0);
+    let parts: Vec<&str> = ip_str.split('.').collect();
+    if parts.len() == 4 {
+        for (i, p) in parts.iter().enumerate() {
+            out[i] = p.parse().unwrap_or(0);
+        }
+    }
+    let port_bytes = port.to_be_bytes();
+    out[4] = port_bytes[0];
+    out[5] = port_bytes[1];
+    out
 }
 
 // TODO: probably make this a macro_rules!
 pub fn serialize(ds: KRPC) -> Box<[u8]> {
-    if let MessageType::Query(q) = ds.message_type {
-        let btypes = BTypes::from(q.arguments);
-        benencode::ser(&btypes).into_boxed_slice()
-    } else {
-        // throw error
-        todo!()
+    let mut outer = BTreeMap::new();
+    outer.insert("t".into(), BTypes::BSTRING(ds.transaction_id.into_bytes()));
+
+    match ds.message_type {
+        MessageType::Query(q) => {
+            // Query: reuse existing BTypes conversion for the full dict
+            let btypes = BTypes::from(q.arguments);
+            return benencode::ser(&btypes).into_boxed_slice();
+        }
+        MessageType::Response(resp) => {
+            outer.insert("y".into(), BTypes::BSTRING(b"r".to_vec()));
+            outer.insert("r".into(), resp.to_btypes());
+        }
+        MessageType::Error(ref e) => {
+            outer.insert("y".into(), BTypes::BSTRING(b"e".to_vec()));
+            let (code, msg) = match e {
+                DHTError::GenericError => (201i64, "A Generic Error Occurred"),
+                DHTError::ServerError => (202, "A Server Error Occurred"),
+                DHTError::ProtocError => {
+                    (203, "Protocol Error: Malformed Packet or Invalid Arguments")
+                }
+                DHTError::UnknownMethod => (204, "Method Unknown"),
+                DHTError::FailedSystemTimeGen(_) => (202, "Internal Server Error"),
+            };
+            outer.insert(
+                "e".into(),
+                BTypes::LIST(vec![
+                    BTypes::INT(code),
+                    BTypes::BSTRING(msg.as_bytes().to_vec()),
+                ]),
+            );
+        }
     }
+
+    benencode::ser(&BTypes::DICT(outer)).into_boxed_slice()
 }
 
 // TODO: write some tests for the deserializer
@@ -463,5 +601,180 @@ mod test {
         } else {
             panic!("Serialized KRPC is not a dict")
         }
+    }
+
+    #[test]
+    fn serialize_response_ping() {
+        let resp = super::Response::new("abcdefghij0123456789".into(), None, None);
+        let krpc = KRPC {
+            transaction_id: "pg".into(),
+            message_type: MessageType::Response(resp),
+        };
+        let serialized = super::serialize(krpc);
+        let decoded = bencode::bencode::decode(&mut serialized.to_vec().into_iter()).unwrap();
+        if let bencode::bencode::BTypes::DICT(d) = decoded {
+            let y: String = d.get("y").unwrap().try_into().unwrap();
+            assert_eq!(y, "r");
+            let t: String = d.get("t").unwrap().try_into().unwrap();
+            assert_eq!(t, "pg");
+            if let bencode::bencode::BTypes::DICT(r) = d.get("r").unwrap() {
+                let id: String = r.get("id").unwrap().try_into().unwrap();
+                assert_eq!(id, "abcdefghij0123456789");
+            } else {
+                panic!("Expected dict for 'r' key")
+            }
+        } else {
+            panic!("Serialized KRPC is not a dict")
+        }
+    }
+
+    #[test]
+    fn serialize_response_with_nodes() {
+        let nodes = vec![super::ResponseNode {
+            id: *b"00000000000000000001",
+            node: uttd::url::Url::from_ip_bytes(&[127, 0, 0, 1], 6881, Scheme::UDP),
+        }];
+        let resp = super::Response::new(
+            "abcdefghij0123456789".into(),
+            None,
+            Some(super::ResponseType::Node(nodes.into())),
+        );
+        let krpc = KRPC {
+            transaction_id: "fn".into(),
+            message_type: MessageType::Response(resp),
+        };
+        let serialized = super::serialize(krpc);
+        // roundtrip: deserialize and verify
+        let parsed = KRPC::deserialize_bytes(serialized.to_vec()).unwrap();
+        assert_eq!(parsed.transaction_id, "fn");
+        if let MessageType::Response(r) = parsed.message_type {
+            if let Some(super::ResponseType::Node(nodes)) = r.response {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(&nodes[0].id, b"00000000000000000001");
+                assert_eq!(nodes[0].node.port(), 6881);
+            } else {
+                panic!("Expected Node response type")
+            }
+        } else {
+            panic!("Expected Response")
+        }
+    }
+
+    #[test]
+    fn serialize_response_with_values() {
+        let peers = vec![uttd::url::Url::from_ip_bytes(
+            &[127, 0, 0, 1],
+            6881,
+            Scheme::UDP,
+        )];
+        let resp = super::Response::new(
+            "abcdefghij0123456789".into(),
+            Some("deadbeef".into()),
+            Some(super::ResponseType::Values(peers.into())),
+        );
+        let krpc = KRPC {
+            transaction_id: "gp".into(),
+            message_type: MessageType::Response(resp),
+        };
+        let serialized = super::serialize(krpc);
+        let parsed = KRPC::deserialize_bytes(serialized.to_vec()).unwrap();
+        assert_eq!(parsed.transaction_id, "gp");
+        if let MessageType::Response(r) = parsed.message_type {
+            assert_eq!(r.token.as_deref(), Some("deadbeef"));
+            if let Some(super::ResponseType::Values(peers)) = r.response {
+                assert_eq!(peers.len(), 1);
+                assert_eq!(peers[0].host, "127.0.0.1:6881");
+            } else {
+                panic!("Expected Values response type")
+            }
+        } else {
+            panic!("Expected Response")
+        }
+    }
+
+    #[test]
+    fn serialize_error() {
+        let krpc = KRPC {
+            transaction_id: "ee".into(),
+            message_type: MessageType::Error(crate::error::DHTError::GenericError),
+        };
+        let serialized = super::serialize(krpc);
+        let parsed = KRPC::deserialize_bytes(serialized.to_vec()).unwrap();
+        assert_eq!(parsed.transaction_id, "ee");
+        if let MessageType::Error(e) = parsed.message_type {
+            matches!(e, crate::error::DHTError::GenericError);
+        } else {
+            panic!("Expected Error, got: {:?}", parsed.message_type)
+        }
+    }
+
+    #[test]
+    fn deserialize_ping_query() {
+        // bencoded: d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe
+        let bytes = b"d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe".to_vec();
+        let res = KRPC::deserialize_bytes(bytes).unwrap();
+        assert_eq!(res.transaction_id, "aa");
+        if let MessageType::Query(q) = res.message_type {
+            assert!(matches!(q.method_name, super::QueryType::Ping));
+            let id = q.get_arg("id").unwrap();
+            assert_eq!(id, b"abcdefghij0123456789");
+        } else {
+            panic!("Expected Query, got: {:?}", res.message_type)
+        }
+    }
+
+    #[test]
+    fn deserialize_find_node_query() {
+        let bytes =
+            b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe"
+                .to_vec();
+        let res = KRPC::deserialize_bytes(bytes).unwrap();
+        assert_eq!(res.transaction_id, "aa");
+        if let MessageType::Query(q) = res.message_type {
+            assert!(matches!(q.method_name, super::QueryType::FindNode));
+            let id = q.get_arg("id").unwrap();
+            assert_eq!(id, b"abcdefghij0123456789");
+            let target = q.get_arg("target").unwrap();
+            assert_eq!(target, b"mnopqrstuvwxyz123456");
+        } else {
+            panic!("Expected Query, got: {:?}", res.message_type)
+        }
+    }
+
+    #[test]
+    fn deserialize_get_peers_query() {
+        let bytes =
+            b"d1:ad2:id20:abcdefghij01234567899:info_hash20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe"
+                .to_vec();
+        let res = KRPC::deserialize_bytes(bytes).unwrap();
+        if let MessageType::Query(q) = res.message_type {
+            assert!(matches!(q.method_name, super::QueryType::FindPeer));
+            let info_hash = q.get_arg("info_hash").unwrap();
+            assert_eq!(info_hash, b"mnopqrstuvwxyz123456");
+        } else {
+            panic!("Expected Query, got: {:?}", res.message_type)
+        }
+    }
+
+    #[test]
+    fn deserialize_announce_peer_query() {
+        let bytes =
+            b"d1:ad2:id20:abcdefghij012345678912:implied_porti1e9:info_hash20:mnopqrstuvwxyz1234564:porti6881e5:token8:aoeusnthe1:q13:announce_peer1:t2:aa1:y1:qe"
+                .to_vec();
+        let res = KRPC::deserialize_bytes(bytes).unwrap();
+        if let MessageType::Query(q) = res.message_type {
+            assert!(matches!(q.method_name, super::QueryType::AnnouncePeer));
+            let token = q.get_arg("token").unwrap();
+            assert_eq!(token, b"aoeusnth");
+        } else {
+            panic!("Expected Query, got: {:?}", res.message_type)
+        }
+    }
+
+    #[test]
+    fn deserialize_unknown_query_returns_error() {
+        let bytes = b"d1:ad2:id20:abcdefghij0123456789e1:q7:unknown1:t2:aa1:y1:qe".to_vec();
+        let res = KRPC::deserialize_bytes(bytes);
+        assert!(res.is_err());
     }
 }

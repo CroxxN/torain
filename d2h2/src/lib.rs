@@ -1,6 +1,6 @@
 // REFERENCE: https://www.bittorrent.org/beps/bep_0005.html
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time;
 use std::time::Duration;
 
@@ -11,9 +11,13 @@ use uttd::url::{Scheme, Url};
 use uttd::AsyncStream;
 
 pub mod error;
+pub mod handler;
 mod kademlia;
 mod request;
 pub mod serde;
+pub mod server;
+mod store;
+mod token;
 
 pub enum PrefferedNetwork {
     UTORRENT,
@@ -41,6 +45,9 @@ pub struct D2H2Client {
     // number of concurrent requests to send for path
     concurrent: u8,
     table: RouteTable,
+    // tokens received from DHT nodes during get_peers responses
+    // keyed by node host string, used for subsequent announce_peer calls
+    tokens: HashMap<String, String>,
 }
 
 impl D2H2Client {
@@ -58,6 +65,7 @@ impl D2H2Client {
             paths: vec![base],
             concurrent: 5,
             table: dht.table,
+            tokens: HashMap::new(),
         })
     }
 
@@ -89,8 +97,8 @@ impl D2H2Client {
     }
 
     /// Iterative DHT lookup for peers matching the given info_hash.
-    /// Sends get_peers queries, following closer nodes until peers are found
-    /// or no new closer nodes are returned.
+    /// Sends get_peers queries concurrently in batches, following closer nodes
+    /// until peers are found or no new closer nodes are returned.
     pub async fn find_peers(
         &mut self,
         info_hash: &[u8; 20],
@@ -108,8 +116,8 @@ impl D2H2Client {
                 break;
             }
 
-            let mut next_round: Vec<Url> = Vec::new();
-
+            // build batch of queries to send concurrently
+            let mut batch: Vec<(Url, KRPC)> = Vec::new();
             for url in to_query.drain(..) {
                 if queried.contains(&url.host) {
                     continue;
@@ -121,33 +129,75 @@ impl D2H2Client {
                 let tid_str =
                     String::from_utf8(tid_bytes.to_vec()).unwrap_or_else(|_| format!("{tid:04x}"));
 
-                let mut krpc =
-                    KRPC::new(tid_str, QueryType::FindPeer, &self.node_id);
-                // add info_hash to query arguments
+                let mut krpc = KRPC::new(tid_str, QueryType::FindPeer, &self.node_id);
                 krpc.set_info_hash(info_hash);
+                batch.push((url, krpc));
+            }
 
-                let response = match self.send_query(&url, krpc).await {
-                    Ok(r) => r,
-                    Err(_) => continue,
+            // limit concurrency to self.concurrent
+            let batch_size = batch.len().min(self.concurrent as usize);
+            batch.truncate(batch_size);
+
+            // spawn concurrent UDP queries
+            let mut handles = Vec::with_capacity(batch_size);
+            for (url, krpc) in batch {
+                let target = Url {
+                    scheme: Scheme::UDP,
+                    host: url.host.clone(),
+                    location: "/".to_owned(),
                 };
+                let data = serde::serialize(krpc);
+                let host = url.host.clone();
 
-                if let MessageType::Response(resp) = response.message_type {
-                    match resp.response {
-                        Some(ResponseType::Values(found_peers)) => {
-                            peers.extend(found_peers.into_vec());
+                handles.push(tokio::spawn(async move {
+                    let stream = AsyncStream::new(target).await;
+                    let mut stream = match stream {
+                        Ok(s) => s,
+                        Err(_) => return (host, None),
+                    };
+                    let mut res = vec![0u8; DHT_PACKET_SIZE];
+                    let read = tokio::time::timeout(
+                        Duration::from_secs(QUERY_TIMEOUT_SECS),
+                        stream.send(&data, &mut res),
+                    )
+                    .await;
+                    match read {
+                        Ok(Ok(n)) => {
+                            res.truncate(n);
+                            let parsed = KRPC::deserialize_bytes(res).ok();
+                            (host, parsed)
                         }
-                        Some(ResponseType::Node(nodes)) => {
-                            for node in nodes.iter() {
-                                let route_node = Node {
-                                    id: node.id,
-                                    url: node.node.clone(),
-                                    last_seen: time::Instant::now(),
-                                };
-                                self.table.add_node(route_node);
-                                next_round.push(node.node.clone());
+                        _ => (host, None),
+                    }
+                }));
+            }
+
+            // collect results
+            let mut next_round: Vec<Url> = Vec::new();
+            for handle in handles {
+                if let Ok((host, Some(response))) = handle.await {
+                    if let MessageType::Response(resp) = response.message_type {
+                        // store the token if present (needed for announce_peer)
+                        if let Some(ref token) = resp.token {
+                            self.tokens.insert(host.clone(), token.clone());
+                        }
+                        match resp.response {
+                            Some(ResponseType::Values(found_peers)) => {
+                                peers.extend(found_peers.into_vec());
                             }
+                            Some(ResponseType::Node(nodes)) => {
+                                for node in nodes.iter() {
+                                    let route_node = Node {
+                                        id: node.id,
+                                        url: node.node.clone(),
+                                        last_seen: time::Instant::now(),
+                                    };
+                                    self.table.add_node(route_node);
+                                    next_round.push(node.node.clone());
+                                }
+                            }
+                            None => {}
                         }
-                        None => {}
                     }
                 }
             }
@@ -181,6 +231,32 @@ impl D2H2Client {
         let mut krpc = KRPC::new("fn".into(), QueryType::FindNode, &self.node_id);
         krpc.set_target(target);
         self.send_query(url, krpc).await
+    }
+
+    /// Send an announce_peer query to a DHT node.
+    /// Tells the node that we are downloading (or have) the torrent with the given info_hash
+    /// on the given port. The token must be one previously received from a get_peers response
+    /// from the same node.
+    pub async fn announce_peer(
+        &self,
+        url: &Url,
+        info_hash: &[u8; 20],
+        port: u16,
+        token: &str,
+        implied_port: bool,
+    ) -> Result<KRPC, D2H2ClientError> {
+        let mut krpc = KRPC::new("ap".into(), QueryType::AnnouncePeer, &self.node_id);
+        krpc.set_info_hash(info_hash);
+        krpc.set_port(port);
+        krpc.set_token(token);
+        krpc.set_implied_port(implied_port);
+        self.send_query(url, krpc).await
+    }
+
+    /// Get the token previously received from a DHT node during a get_peers response.
+    /// Returns None if no token has been stored for the given node host.
+    pub fn get_token(&self, node_host: &str) -> Option<&str> {
+        self.tokens.get(node_host).map(|s| s.as_str())
     }
 }
 
