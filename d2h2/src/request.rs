@@ -35,6 +35,7 @@ mod tests {
 
     use crate::request::{Query, RequestBucket};
 
+    #[test]
     fn check_bucket() {
         let transaction_id = "aa";
 
