@@ -71,7 +71,7 @@ impl Stream {
             Scheme::HTTP => StreamType::TCP(TcpStream::connect(&url.host).unwrap()),
             Scheme::UDP => {
                 let mut sock = UdpSocket::bind("0.0.0.0:0").unwrap();
-                sock.set_read_timeout(Some(Duration::from_secs(5)))?;
+                sock.set_read_timeout(Some(Duration::from_secs(1)))?;
                 sock.set_write_timeout(Some(Duration::from_secs(5)))?;
                 sock.connect(&url.host).unwrap();
                 let connection_id = Self::initiate_udp(&mut sock)?;
@@ -90,7 +90,7 @@ impl Stream {
 
     /// UDP trackers require a initial handshake type message passing
     /// Defined in BEP 00015
-    /// https://www.bittorrent.org/beps/bep_0015.html
+    /// <https://www.bittorrent.org/beps/bep_0015.html>
 
     pub fn initiate_udp(stream: &mut UdpSocket) -> Result<i64, UttdError> {
         // magic
@@ -161,7 +161,7 @@ impl Stream {
                 break;
             }
         }
-        // if after 10 tires still no response, return error
+        // if after 5 tires still no response, return error
         if res.is_empty() {
             return Err(UttdError::FailedRequest);
         }

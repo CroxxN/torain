@@ -82,7 +82,7 @@ pub struct Query {
     // A dictionary of btypes for named argument pairs. Useful for later serialization
     // Provide a utility function to parse these arguments
     // TODO: maybe use Btrees instead
-    arguments: QueryDataTypes,
+    arguments: BTypes,
 }
 
 #[derive(Debug)]
@@ -123,19 +123,21 @@ impl KRPC {
             QueryType::AnnouncePeer => "announce_peer".into(),
         };
 
-        a_argument_b.insert("id".into(), QueryDataTypes::QVec(id.to_vec().into()));
-        arguments_a.insert("a".into(), QueryDataTypes::QDict(a_argument_b));
-        arguments_a.insert("y".into(), QueryDataTypes::QVec("q".as_bytes().into()));
-        arguments_a.insert("q".into(), QueryDataTypes::QVec(q_name.into()));
+        // TODO: Instead of defining `QueryDataTypes`, reuse Bencode datatypes.
+        a_argument_b.insert("id".into(), BTypes::BSTRING(id.into()));
+        arguments_a.insert("a".into(), BTypes::DICT(a_argument_b));
+        arguments_a.insert("y".into(), BTypes::BSTRING(b"q".into()));
+        arguments_a.insert("q".into(), BTypes::BSTRING(q_name));
         // TODO: add key "t" here?
         arguments_a.insert(
             "t".into(),
-            QueryDataTypes::QVec(transaction_id.as_bytes().into()),
+            // BTypes::LIST(vec![BTypes::BSTRING(transaction_id.clone().into())]),
+            BTypes::BSTRING(transaction_id.clone().into()),
         );
         // arguments.
         let query = Query {
             method_name: method,
-            arguments: QueryDataTypes::QDict(arguments_a),
+            arguments: BTypes::DICT(arguments_a),
         };
         Self {
             transaction_id,
@@ -144,24 +146,24 @@ impl KRPC {
     }
 
     // TODO: think of a better way to handle arguments
-    pub fn set_token(&mut self, token: &str) {
-        // todo: add pattern matching
-        if let MessageType::Query(q) = &mut self.message_type {
-            match &mut q.arguments {
-                QueryDataTypes::QDict(qd) => {
-                    if let Some(a) = qd.get_mut("a") {
-                        if let QueryDataTypes::QDict(b) = a {
-                            b.insert(
-                                "token".into(),
-                                QueryDataTypes::QVec(token.as_bytes().into()),
-                            );
-                        }
-                    }
-                }
-                _ => unimplemented!(),
-            }
-        }
-    }
+    // pub fn set_token(&mut self, token: &str) {
+    //     // todo: add pattern matching
+    //     if let MessageType::Query(q) = &mut self.message_type {
+    //         match &mut q.arguments {
+    //             QueryDataTypes::QDict(qd) => {
+    //                 if let Some(a) = qd.get_mut("a") {
+    //                     if let QueryDataTypes::QDict(b) = a {
+    //                         b.insert(
+    //                             "token".into(),
+    //                             QueryDataTypes::QVec(token.as_bytes().into()),
+    //                         );
+    //                     }
+    //                 }
+    //             }
+    //             _ => unimplemented!(),
+    //         }
+    //     }
+    // }
 
     pub fn deserialize_bytes(packet: Vec<u8>) -> Result<KRPC, error::SerdeError> {
         let deserialized = if let BTypes::DICT(d) = bencode::decode(&mut packet.into_iter())? {
@@ -295,18 +297,21 @@ impl KRPC {
 }
 
 // TODO: probably make this a macro_rules!
+// IMPORTANT: Implement Serialization
 pub fn serialize(ds: KRPC) -> Box<[u8]> {
-    let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
+    // let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
 
     if let MessageType::Query(q) = ds.message_type {
-        if let QueryDataTypes::QDict(qd) = q.arguments {
-            // let res = BTypes::from(value)
-            for (id, value) in qd.into_iter() {
-                // TODO: cotinue
-                raw.extend_from_slice(id.as_bytes());
-                // todo!()
-            }
-        }
+        return ::bencode::benencode::ser(&q.arguments).into();
+        // if let BTypes::DICT(qd) = q.arguments {
+        // let res = BTypes::from(value)
+        // for (id, value) in qd.into_iter() {
+        //     // TODO: cotinue
+        //     // encode into `BTypes` and pass to ser() from benencode
+        //     raw.extend_from_slice(id.as_bytes());
+        // todo!()
+        // }
+        // }
     } else {
         // throw error
         todo!()
@@ -314,7 +319,7 @@ pub fn serialize(ds: KRPC) -> Box<[u8]> {
 
     // CONTINUE:
     // todo!();
-    raw.into_boxed_slice()
+    // raw.into_boxed_slice()
 }
 
 // TODO: write some tests for the deserializer
@@ -323,6 +328,7 @@ pub fn serialize(ds: KRPC) -> Box<[u8]> {
 mod test {
     use uttd::url::Scheme;
 
+    use super::serialize;
     use super::{MessageType, KRPC};
     use crate::serde::Response;
 
@@ -401,10 +407,16 @@ mod test {
     }
 
     #[test]
-    fn serialize() {
+    fn test_serialize() {
         let krpc = KRPC::new("aa".into(), super::QueryType::Ping, &[0; 20]);
-        // let bcode: BTypes = krpc.bencode();
-        // let serialized = bcode.raw();
-        dbg!(krpc);
+        dbg!(&krpc);
+        let serialized_krpc = serialize(krpc);
+        serialized_krpc.iter().for_each(|x| {
+            if x.is_ascii() {
+                println!("{}", *x as char)
+            } else {
+                println!("Not ascii");
+            }
+        });
     }
 }
