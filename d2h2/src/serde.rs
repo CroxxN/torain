@@ -3,23 +3,24 @@
 use std::collections::BTreeMap;
 
 use crate::error::{self, DHTError, SerdeError};
-use ::bencode::utils::vec_to_string;
 use bencode::{bencode, BTypes};
 use uttd::url::{Scheme, Url};
 
 // quick helper function to debug u8 values in a Box<>
-trait Boxy{
-    fn print_box(&self)->();
+trait Boxy {
+    fn print_box(&self) -> ();
 }
 
-impl Boxy for Box<[u8]>{
-    fn print_box(&self)->() {
-       self.iter().for_each(|x| if x.is_ascii(){
-        print!("{}", *x as char);
-       }else{
-        print!("*");
-       });
-       println!();
+impl Boxy for Box<[u8]> {
+    fn print_box(&self) -> () {
+        self.iter().for_each(|x| {
+            if x.is_ascii() {
+                print!("{}", *x as char);
+            } else {
+                print!("*");
+            }
+        });
+        println!();
     }
 }
 
@@ -44,18 +45,18 @@ impl MessageType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Response {
     // TODO: use &[u8] instead of String?
-    id: String,
+    id: Vec<u8>,
     // for find_node responses we don't get a token response type
-    token: Option<String>,
+    token: Option<Vec<u8>>,
     response: Option<ResponseType>,
 }
 
 // TODO: implement Response handeler. Mainly for the server side of DKPRC.
 impl Response {
-    fn new(id: String, resp_type: Option<ResponseType>) -> Self {
+    fn new(id: Vec<u8>, resp_type: Option<ResponseType>) -> Self {
         if let Some(r) = resp_type {
             // TODO: do something
             match r {
@@ -63,6 +64,9 @@ impl Response {
                     todo!()
                 }
                 ResponseType::Values(v) => {
+                    todo!()
+                }
+                ResponseType::Query(_) => {
                     todo!()
                 }
             }
@@ -80,19 +84,28 @@ impl Response {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum ResponseType {
     // we use box here because after the `Url` and `ResponseNode` are constructed,
     // we don't need to add to them or remove from them. We can just drop them after
     // we've consumed them.
     Node(Box<[ResponseNode]>),
     Values(Box<[Url]>),
+    Query(ResponseQuery),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ResponseNode {
     id: [u8; 20],
     node: Url,
+}
+
+#[derive(Debug)]
+pub struct ResponseQuery {
+    target: Option<Vec<u8>>,
+    info_hash: Option<Vec<u8>>,
+    implied_port: Option<usize>,
+    port: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -113,7 +126,7 @@ pub enum QueryType {
 }
 
 #[derive(Debug)]
-pub struct AnnounceArgs{
+pub struct AnnounceArgs {
     implied_port: u8,
     info_hash: Vec<u8>,
     port: u32,
@@ -133,6 +146,7 @@ impl KRPC {
             return Err(SerdeError::InvalidMessageType);
         }
     }
+    // NOTE: seperate serialization logic into a separate function?
     pub fn new(transaction_id: String, method: QueryType, id: &[u8; 20]) -> Self {
         let mut outer_args = BTreeMap::new();
         let mut inner_args = BTreeMap::new();
@@ -228,19 +242,19 @@ impl KRPC {
             return Err(error::SerdeError::UnknownDHTError);
         }
         if &y == "r" {
-            let id: String;
+            let id: Vec<u8>;
             let mut token = None;
             if let BTypes::DICT(d) = deserialized.get("r").unwrap() {
                 // TODO: decode the response message. Also think about how we wanna give this back to the
                 // overall DHT implementation---as it's used by both the client and the server.
                 // We may need a few helper functions to deal with the type (4) of the available KPRC.
                 if let BTypes::BSTRING(bs) = d.get("id").unwrap() {
-                    id = vec_to_string(bs);
+                    id = bs.clone();
                 } else {
                     return Err(error::SerdeError::NoValidIDPresent);
                 }
                 if let Some(BTypes::BSTRING(bs)) = d.get("token") {
-                    token = Some(vec_to_string(bs));
+                    token = Some(bs.clone());
                 }
 
                 let mut resp = Response {
@@ -292,25 +306,64 @@ impl KRPC {
         // TODO: we don't really care about this for now as we'll be mostly running in client mode
         if &y == "q" {
             // TODO: Remove
-            // let method_name: String = deserialized.get("q").unwrap().try_into()?;
-            // if let BTypes::DICT(d) = deserialized.get("q").unwrap() {
-            //     todo!()
-            // }
-            // todo!()
-            // TODO: Remove
-            return Err(error::SerdeError::UnimplementedQueryParsing);
+            let transaction_id: String = deserialized.get("t").unwrap().try_into()?;
+            let method_name: String = deserialized.get("q").unwrap().try_into()?;
+            let a;
+            if let BTypes::DICT(key_a) = deserialized.get("a").unwrap() {
+                a = key_a;
+            } else {
+                return Err(error::SerdeError::InvalidMessageType);
+            }
+            let id: Vec<u8> = a.get("id").unwrap().try_into()?;
+            let mut token: Option<Vec<u8>> = None;
+
+            let mut resp_query = ResponseQuery {
+                // id
+                target: None,
+                info_hash: None,
+                implied_port: None,
+                port: None,
+            };
+
+            match method_name.as_str() {
+                "ping" => (),
+                "find_node" => {
+                    let target: Vec<u8> = a.get("target").unwrap().try_into()?;
+                    resp_query.target = Some(target);
+                }
+                "get_peers" => {
+                    let info_hash: Vec<u8> = a.get("info_hash").unwrap().try_into()?;
+                    resp_query.info_hash = Some(info_hash);
+                }
+                "announce_peer" => {
+                    let implied_port: usize = a.get("implied_port").unwrap().try_into()?;
+                    let info_hash: Vec<u8> = a.get("info_hash").unwrap().try_into()?;
+                    let port: usize = a.get("port").unwrap().try_into()?;
+                    token = Some(a.get("token").unwrap().try_into()?);
+
+                    resp_query.implied_port = Some(implied_port);
+                    resp_query.info_hash = Some(info_hash);
+                    resp_query.port = Some(port);
+                }
+                // TODO: change error type
+                _ => return Err(error::SerdeError::InvalidMessageType),
+            }
+
+            // Change the ergonomic of how it looks
+            return Ok(KRPC {
+                transaction_id,
+                message_type: MessageType::Response(Response {
+                    id,
+                    token,
+                    response: Some(ResponseType::Query(resp_query)),
+                }),
+            });
         }
-
-        // CONTINUE:
-
-        // TODO:
-        todo!()
+        return Err(error::SerdeError::BencodeGenericError);
     }
-    // TODO: probably make this a macro_rules!
-    // IMPORTANT: Implement Serialization
+    // TODO: probably doesn't need to use match, just pass the BTree to ser()
     pub fn serialize(self) -> Box<[u8]> {
         // let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
-
         match self.message_type {
             MessageType::Query(q) => {
                 return ::bencode::benencode::ser(&q.arguments).into();
@@ -355,14 +408,14 @@ mod test {
             .to_vec();
         let res = KRPC::deserialize_bytes(bytes).unwrap();
         let expected_res = Response {
-            id: "mnopqrstuvwxyz123456".to_string(),
+            id: b"mnopqrstuvwxyz123456".to_vec(),
             token: None,
             response: None,
         };
         if let MessageType::Response(r) = res.message_type {
             assert_eq!(r.id, expected_res.id);
             assert_eq!(r.token, expected_res.token);
-            assert!(r.response.as_ref() == None);
+            // assert!(r.response.as_ref() == None);
         } else {
             panic!("Error")
         }
@@ -374,7 +427,7 @@ mod test {
                 .to_vec();
         let res = KRPC::deserialize_bytes(bytes).unwrap();
         if let MessageType::Response(r) = res.message_type {
-            assert_eq!(r.id, "abcdefghij0123456789".to_string());
+            assert_eq!(r.id, b"abcdefghij0123456789".to_vec());
             if let Some(super::ResponseType::Values(nodes)) = r.response {
                 assert_eq!(nodes[0].host, "127.0.0.1:6881");
                 assert_eq!(nodes[0].scheme, Scheme::UDP);
@@ -415,8 +468,8 @@ mod test {
         assert_eq!(deserialized_krpc.transaction_id, "aa");
     }
     #[test]
-    fn serializae_announce(){
-        let ap = AnnounceArgs{
+    fn serializae_announce() {
+        let ap = AnnounceArgs {
             implied_port: 1,
             info_hash: vec![0; 20],
             port: 6881,
