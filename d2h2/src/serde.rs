@@ -7,6 +7,22 @@ use ::bencode::utils::vec_to_string;
 use bencode::{bencode, BTypes};
 use uttd::url::{Scheme, Url};
 
+// quick helper function to debug u8 values in a Box<>
+trait Boxy{
+    fn print_box(&self)->();
+}
+
+impl Boxy for Box<[u8]>{
+    fn print_box(&self)->() {
+       self.iter().for_each(|x| if x.is_ascii(){
+        print!("{}", *x as char);
+       }else{
+        print!("*");
+       });
+       println!();
+    }
+}
+
 #[derive(Debug)]
 pub struct KRPC {
     pub transaction_id: String,
@@ -20,6 +36,8 @@ pub enum MessageType {
     Error(error::DHTError),
 }
 
+// NOTE: Figure out if this is really needed. Sounds like we can use a helper like this
+// to easily and generically generate MessageTypes. Might be redundant.
 impl MessageType {
     fn from(mtype: MessageType) {
         todo!()
@@ -35,6 +53,7 @@ pub struct Response {
     response: Option<ResponseType>,
 }
 
+// TODO: implement Response handeler. Mainly for the server side of DKPRC.
 impl Response {
     fn new(id: String, resp_type: Option<ResponseType>) -> Self {
         if let Some(r) = resp_type {
@@ -89,14 +108,16 @@ pub struct Query {
 pub enum QueryType {
     Ping,
     FindNode,
-    FindPeer,
-    AnnouncePeer,
+    FindPeer(Vec<u8>),
+    AnnouncePeer(AnnounceArgs),
 }
 
 #[derive(Debug)]
-pub enum QueryDataTypes {
-    QVec(Box<[u8]>),
-    QDict(BTreeMap<String, QueryDataTypes>),
+pub struct AnnounceArgs{
+    implied_port: u8,
+    info_hash: Vec<u8>,
+    port: u32,
+    token: String,
 }
 
 // INFO: de
@@ -113,57 +134,48 @@ impl KRPC {
         }
     }
     pub fn new(transaction_id: String, method: QueryType, id: &[u8; 20]) -> Self {
-        let mut arguments_a = BTreeMap::new();
-        let mut a_argument_b = BTreeMap::new();
+        let mut outer_args = BTreeMap::new();
+        let mut inner_args = BTreeMap::new();
 
-        let q_name: Vec<u8> = match method {
-            QueryType::Ping => "ping".into(),
-            QueryType::FindNode => "find_node".into(),
-            QueryType::FindPeer => "get_peers".into(),
-            QueryType::AnnouncePeer => "announce_peer".into(),
-        };
+        let q_name: Vec<u8>;
 
-        // TODO: Instead of defining `QueryDataTypes`, reuse Bencode datatypes.
-        a_argument_b.insert("id".into(), BTypes::BSTRING(id.into()));
-        arguments_a.insert("a".into(), BTypes::DICT(a_argument_b));
-        arguments_a.insert("y".into(), BTypes::BSTRING(b"q".into()));
-        arguments_a.insert("q".into(), BTypes::BSTRING(q_name));
-        // TODO: add key "t" here?
-        arguments_a.insert(
-            "t".into(),
-            // BTypes::LIST(vec![BTypes::BSTRING(transaction_id.clone().into())]),
-            BTypes::BSTRING(transaction_id.clone().into()),
-        );
-        // arguments.
+        inner_args.insert("id".into(), BTypes::BSTRING(id.into()));
+        outer_args.insert("y".into(), BTypes::BSTRING(b"q".into()));
+
+        match method {
+            QueryType::Ping => q_name = "ping".into(),
+            QueryType::FindNode => {
+                q_name = "find_node".into();
+                inner_args.insert("target".into(), BTypes::BSTRING(vec![0; 20]));
+            }
+            QueryType::FindPeer(ref p) => {
+                q_name = "get_peers".into();
+                inner_args.insert("info_hash".into(), BTypes::BSTRING(p.to_vec()));
+            }
+            // remove clones
+            QueryType::AnnouncePeer(ref ap) => {
+                q_name = "announce_peer".into();
+                inner_args.insert("implied_port".into(), BTypes::INT(ap.implied_port.into()));
+                inner_args.insert("info_hash".into(), BTypes::BSTRING(ap.info_hash.clone()));
+                inner_args.insert("port".into(), BTypes::INT(ap.port.into()));
+                inner_args.insert("token".into(), BTypes::BSTRING(ap.token.clone().into()));
+            }
+        }
+
+        outer_args.insert("q".into(), BTypes::BSTRING(q_name));
+        outer_args.insert("a".into(), BTypes::DICT(inner_args));
+        outer_args.insert("t".into(), BTypes::BSTRING(transaction_id.clone().into()));
+
         let query = Query {
             method_name: method,
-            arguments: BTypes::DICT(arguments_a),
+            arguments: BTypes::DICT(outer_args),
         };
+
         Self {
             transaction_id,
             message_type: MessageType::Query(query),
         }
     }
-
-    // TODO: think of a better way to handle arguments
-    // pub fn set_token(&mut self, token: &str) {
-    //     // todo: add pattern matching
-    //     if let MessageType::Query(q) = &mut self.message_type {
-    //         match &mut q.arguments {
-    //             QueryDataTypes::QDict(qd) => {
-    //                 if let Some(a) = qd.get_mut("a") {
-    //                     if let QueryDataTypes::QDict(b) = a {
-    //                         b.insert(
-    //                             "token".into(),
-    //                             QueryDataTypes::QVec(token.as_bytes().into()),
-    //                         );
-    //                     }
-    //                 }
-    //             }
-    //             _ => unimplemented!(),
-    //         }
-    //     }
-    // }
 
     pub fn deserialize_bytes(packet: Vec<u8>) -> Result<KRPC, error::SerdeError> {
         let deserialized = if let BTypes::DICT(d) = bencode::decode(&mut packet.into_iter())? {
@@ -179,7 +191,7 @@ impl KRPC {
         //     a. 'e'
         //     b. 'q'
         //     c. 'r'
-        // These three values lets the DHT node know WHICH type of packet this current one if.
+        // These three values lets the DHT node know WHICH type of packet this current one is.
         //     Key 'e' means that we've encountered an error. This is really only possible when
         //     we RECEIVED an response from another DHT node in client mode. So we don't really need
         //     to care about forming a packet with key 'e' when running in client mode. However,
@@ -191,7 +203,7 @@ impl KRPC {
         //     to a query packet.
         //
         //     Key 'r' means that it is a response to a previous request we've made. If we get a reponse with
-        //     key 'r', we can be pretty certain that we didn't encounter an error from the server (as had it been
+        //     key 'r', we can be pretty certain that we didn't encounter an error from the server (as if that had been
         //     the case, we'd have encountered a packet with key 'e'). In client mode, we only RECEIVE this type
         //     of packet. In server mode, we will need to form packet with a key 'r'.
 
@@ -294,32 +306,20 @@ impl KRPC {
         // TODO:
         todo!()
     }
-}
+    // TODO: probably make this a macro_rules!
+    // IMPORTANT: Implement Serialization
+    pub fn serialize(self) -> Box<[u8]> {
+        // let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
 
-// TODO: probably make this a macro_rules!
-// IMPORTANT: Implement Serialization
-pub fn serialize(ds: KRPC) -> Box<[u8]> {
-    // let mut raw: Vec<u8> = Vec::new(); // TODO: change '10' to something else
-
-    if let MessageType::Query(q) = ds.message_type {
-        return ::bencode::benencode::ser(&q.arguments).into();
-        // if let BTypes::DICT(qd) = q.arguments {
-        // let res = BTypes::from(value)
-        // for (id, value) in qd.into_iter() {
-        //     // TODO: cotinue
-        //     // encode into `BTypes` and pass to ser() from benencode
-        //     raw.extend_from_slice(id.as_bytes());
-        // todo!()
-        // }
-        // }
-    } else {
-        // throw error
-        todo!()
+        match self.message_type {
+            MessageType::Query(q) => {
+                return ::bencode::benencode::ser(&q.arguments).into();
+            }
+            MessageType::Response(_) | MessageType::Error(_) => {
+                unimplemented!();
+            }
+        };
     }
-
-    // CONTINUE:
-    // todo!();
-    // raw.into_boxed_slice()
 }
 
 // TODO: write some tests for the deserializer
@@ -328,9 +328,9 @@ pub fn serialize(ds: KRPC) -> Box<[u8]> {
 mod test {
     use uttd::url::Scheme;
 
-    use super::serialize;
+    // use super::serialize;
     use super::{MessageType, KRPC};
-    use crate::serde::Response;
+    use crate::serde::{AnnounceArgs, Response};
 
     #[test]
     fn deserialize_response_transaction_id() {
@@ -409,14 +409,23 @@ mod test {
     #[test]
     fn test_serialize() {
         let krpc = KRPC::new("aa".into(), super::QueryType::Ping, &[0; 20]);
-        dbg!(&krpc);
-        let serialized_krpc = serialize(krpc);
-        serialized_krpc.iter().for_each(|x| {
-            if x.is_ascii() {
-                println!("{}", *x as char)
-            } else {
-                println!("Not ascii");
-            }
-        });
+        let serialized_krpc = krpc.serialize();
+        // currently fails because deserialization for Query isn't implemented, only Response.
+        let deserialized_krpc = KRPC::deserialize_bytes(serialized_krpc.to_vec()).unwrap();
+        assert_eq!(deserialized_krpc.transaction_id, "aa");
+    }
+    #[test]
+    fn serializae_announce(){
+        let ap = AnnounceArgs{
+            implied_port: 1,
+            info_hash: vec![0; 20],
+            port: 6881,
+            token: "aoeusnth".into(),
+        };
+
+        let krpc = KRPC::new("aa".into(), super::QueryType::AnnouncePeer(ap), &[0; 20]);
+        let serialized_krpc = krpc.serialize();
+        // TODO: assert a more meaningful metric
+        assert!(serialized_krpc.len() != 0);
     }
 }
