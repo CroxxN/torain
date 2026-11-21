@@ -14,3 +14,7 @@ path = "../bencode"
 
 [dependencies]
 tokio = { version = "1.41.1", features = ["full"] }
+
+[dev-dependencies.torrent]
+path = "../torrent"
+

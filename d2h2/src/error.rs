@@ -3,7 +3,7 @@ use bencode::utils;
 use std::{fmt::Display, time::SystemTimeError};
 use uttd::error::UrlError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DHTError {
     // DHT Query errors
     GenericError,
@@ -13,6 +13,21 @@ pub enum DHTError {
 
     // other errors
     FailedSystemTimeGen(SystemTimeError),
+}
+
+impl PartialEq for DHTError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::GenericError, Self::GenericError) => true,
+            (Self::ServerError, Self::ServerError) => true,
+            (Self::ProtocError, Self::ProtocError) => true,
+            (Self::UnknownMethod, Self::UnknownMethod) => true,
+            (Self::FailedSystemTimeGen(a), Self::FailedSystemTimeGen(b)) => {
+                a.duration() == b.duration()
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Display for DHTError {

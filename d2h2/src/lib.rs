@@ -4,16 +4,21 @@
 // = implement a routing table
 // = implement the XOR metric
 // = more
+//
+#![allow(dead_code)]
 
-use std::sync::Arc;
-
-use error::D2H2ClientError;
-use uttd::url::Url;
-
+mod driver;
 mod error;
 mod kademlia;
 mod request;
 mod serde;
+
+use std::sync::mpsc::{self, channel};
+use std::sync::Arc;
+
+use driver::DHTCommands;
+use error::D2H2ClientError;
+use uttd::url::Url;
 
 pub enum PrefferedNetwork {
     UTORRENT,
@@ -24,6 +29,7 @@ pub enum PrefferedNetwork {
 
 #[derive(Debug)]
 #[allow(dead_code)]
+// state
 struct D2H2Client {
     // TODO: Complete
     // URL Paths that should be contacted to find peers
@@ -33,6 +39,9 @@ struct D2H2Client {
     paths: Vec<Url>,
     // number of concurrent requests to send for path
     concurrent: u8,
+    // message passing pipe
+    tx: mpsc::Sender<DHTCommands>,
+    ehandle: std::thread::JoinHandle<()>,
 }
 
 impl D2H2Client {
@@ -44,11 +53,24 @@ impl D2H2Client {
             _ => "router.bittorrent.com",
         };
         let base = Url::from_ip(base, 6881)?;
+        let (tx, rx) = mpsc::channel::<DHTCommands>();
+        let handle = std::thread::spawn(|| Self::kademlia(rx));
         Ok(Self {
             paths: vec![base],
             concurrent: 5, // TODO: change this value
+            tx,
+            ehandle: handle,
         })
     }
+    pub fn kademlia(rx: mpsc::Receiver<DHTCommands>) -> () {
+        // _ = rx;
+        // while let Ok(x) = rx.try_recv() {
+
+        // }
+
+        todo!()
+    }
+
     pub fn find_peers(&self, info_hash: &[u8; 20]) -> Result<Box<[Url]>, D2H2ClientError> {
         let urls: Arc<Vec<Url>> = Arc::new(Vec::new());
         // TODO:

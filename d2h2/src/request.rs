@@ -1,4 +1,8 @@
+#![allow(unused_imports, dead_code)]
+
 use std::collections::HashMap;
+
+use crate::serde;
 
 // which type of query is this packet?
 // TODO: for now, we're only concerned with sending
@@ -52,28 +56,49 @@ mod tests {
     }
     #[test]
     fn ping() {
-        let transaction_id = "aa";
-        let krpc = KRPC::new(
-            transaction_id.into(),
-            QueryType::Ping,
-            b"abcdefghij0123456789",
-        );
-        let krpc_bytes = serialize(krpc);
+        let message = MessageType::Query {
+            id: [0; 20],
+            query: crate::serde::QueryType::Ping,
+        };
+        let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
+        let krpc_bytes = krpc.clone().serialize();
         krpc_bytes.iter().for_each(|x| print!("{}", *x as char));
         // dbg!(&krpc_bytes);
         let mut stream =
             Stream::new(&Url::new("udp://dht.transmissionbt.com:6881").unwrap()).unwrap();
         let mut resp = vec![0; 100];
-        let result = stream.send(&krpc_bytes, &mut resp);
-        _ = dbg!(result);
-        dbg!(&resp);
-        println!("RESPONSE");
-        resp.iter().for_each(|x| {
-            if x.is_ascii() {
-                print!("{}", *x as char)
-            } else {
-                print!("*");
-            }
-        });
+        _ = stream.send(&krpc_bytes, &mut resp);
+        // let resp = crate::serde::Vec::deserialize_bytes(resp);
+        let resp: KRPC = crate::serde::Vec2Kprc::into(resp, Some(MessageTag::Ping)).unwrap();
+        assert_eq!(resp.transact_id, [b'a', b'a']);
+    }
+    #[test]
+    fn find_peer() {
+        let fs = "debian.torrent";
+        let torrent = torrent::torrent::Torrent::from_file(fs).unwrap();
+        let tracker = torrent::tracker::TrackerParams::new(&torrent);
+        let info_hash = tracker.info_hash.to_owned().try_into().unwrap();
+
+        let transaction_id = [b'a', b'a'];
+        let message = MessageType::Query {
+            id: *b"abcdefghij0123456789",
+            query: QueryType::GetPeers { info_hash },
+        };
+
+        let krpc = KRPC::new(transaction_id, message);
+
+        let krpc_bytes = krpc.serialize();
+
+        let mut stream =
+            Stream::new(&Url::new("udp://dht.transmissionbt.com:6881").unwrap()).unwrap();
+        //IMPORTANT: We need large vector because nodes have a habit of returning huge number of other nodes
+        let mut resp = vec![0; 1000];
+        _ = stream.send(&krpc_bytes, &mut resp);
+
+        resp.iter().for_each(|x| print!("{}", *x as char));
+
+        let resp = <KRPC as Vec2Kprc>::into(resp, Some(MessageTag::GetPeers));
+
+        assert_eq!(resp.unwrap().transact_id, [b'a', b'a']);
     }
 }

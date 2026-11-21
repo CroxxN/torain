@@ -113,3 +113,14 @@ impl<'a> TryFrom<&'a BTypes> for &'a [u8] {
         }
     }
 }
+
+impl TryFrom<&BTypes> for [u8; 20] {
+    type Error = BencodeErr;
+    fn try_from(value: &BTypes) -> Result<Self, Self::Error> {
+        if let BTypes::BSTRING(s) = value {
+            Ok(s.to_owned().try_into().unwrap())
+        } else {
+            Err(BencodeErr::Berr)
+        }
+    }
+}
