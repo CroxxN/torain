@@ -15,6 +15,27 @@ pub enum DHTError {
     FailedSystemTimeGen(SystemTimeError),
 }
 
+impl DHTError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            DHTError::GenericError => 201,
+            DHTError::ServerError => 202,
+            DHTError::ProtocError => 203,
+            DHTError::UnknownMethod => 204,
+            _ => 0,
+        }
+    }
+    pub fn error_message(&self) -> String {
+        match self {
+            DHTError::GenericError => "A Generic Error Occured".into(),
+            DHTError::ServerError => "A Server Error Occured".into(),
+            DHTError::ProtocError => "Malformed Packet Detected".into(),
+            DHTError::UnknownMethod => "Unknown argument or method".into(),
+            _ => "Unkonwn error occured".into(),
+        }
+    }
+}
+
 impl PartialEq for DHTError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {

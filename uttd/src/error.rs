@@ -1,10 +1,11 @@
-use std::{fmt::Display, net::AddrParseError, num::ParseIntError};
+use std::{fmt::Display, net::AddrParseError, num::ParseIntError, str::FromStr};
 
 #[derive(Debug)]
 pub enum UrlError {
     InvalidUrl,
     ParseIntError(std::num::ParseIntError),
     AddressParseError,
+    NumberConversionError(<u8 as FromStr>::Err),
 }
 
 impl Display for UrlError {
@@ -13,6 +14,7 @@ impl Display for UrlError {
             UrlError::InvalidUrl => write!(f, "Invalid Url Encountered"),
             UrlError::ParseIntError(e) => write!(f, "Error Parsing Integer in URL: {e}"),
             UrlError::AddressParseError => write!(f, "Failed to parse URL"),
+            UrlError::NumberConversionError(x) => write!(f, "Failed to parse diits: {}", x),
         }
     }
 }

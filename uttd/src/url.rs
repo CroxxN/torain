@@ -89,6 +89,20 @@ impl<'a> Url {
         })
     }
 
+    pub fn to_bytes(self) -> Result<Vec<u8>, UrlError> {
+        let ip = self
+            .host
+            .split(":")
+            .nth(0)
+            .ok_or(UrlError::AddressParseError)?;
+        let mut bytes: Vec<u8> = ip
+            .split(".")
+            .map(|x| x.parse::<u8>())
+            .collect::<Result<Vec<u8>, _>>()?;
+        bytes.extend_from_slice(&self.port().to_be_bytes()); // network-byte order
+        Ok(bytes)
+    }
+
     /// Get the port associated with the remote address
     /// ```
     /// use uttd::url::Url;
@@ -134,5 +148,12 @@ mod test {
             (port, scheme, host),
             (1337, Scheme::UDP, "open.demonii.com:1337".to_owned())
         );
+    }
+
+    #[test]
+    fn convert_bytes() {
+        let url = Url::new("udp://127.0.0.1:1337").unwrap();
+        let expected = [127, 0, 0, 1, 5, 57];
+        assert_eq!(url.to_bytes().unwrap(), expected);
     }
 }

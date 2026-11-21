@@ -68,6 +68,7 @@ pub enum Peers {
     Values(Vec<Url>),
     Nodes(Vec<([u8; 20], Url)>),
 }
+
 pub trait Vec2Kprc {
     type Error;
     fn into(message: Vec<u8>, hint: Option<MessageTag>) -> Result<Self, Self::Error>
@@ -87,18 +88,20 @@ impl KRPC {
     }
     pub fn serialize(self) -> Vec<u8> {
         let btrees = self.btrees();
-        bencode::benencode::ser(&BTypes::DICT(btrees))
+        bencode::benencode::ser(&btrees)
     }
 
-    fn btrees(self) -> BTreeMap<String, BTypes> {
+    fn btrees(self) -> BTypes {
         match self.message_type {
             MessageType::Query { id, query } => Self::query_btrees(self.transact_id, id, query),
-            MessageType::Response { id, response } => todo!("{:?} {:?}", id, response),
-            MessageType::Error(_) => todo!(),
+            MessageType::Response { id, response } => {
+                Self::response_btrees(self.transact_id, id, response)
+            }
+            MessageType::Error(error) => Self::error_btrees(self.transact_id, error),
         }
     }
 
-    fn query_btrees(tid: [u8; 2], id: [u8; 20], query: QueryType) -> BTreeMap<String, BTypes> {
+    fn query_btrees(tid: [u8; 2], id: [u8; 20], query: QueryType) -> BTypes {
         let mut outer_args: BTreeMap<String, BTypes> = BTreeMap::new();
         let mut inner_args = BTreeMap::new();
 
@@ -136,13 +139,61 @@ impl KRPC {
         outer_args.insert("a".into(), BTypes::DICT(inner_args));
         outer_args.insert("t".into(), BTypes::BSTRING(tid.into()));
 
-        return outer_args;
+        BTypes::DICT(outer_args)
     }
-    fn response_btrees() {
-        todo!()
+    fn response_btrees(tid: [u8; 2], id: [u8; 20], response: ResponseType) -> BTypes {
+        let mut outer_args: BTreeMap<String, BTypes> = BTreeMap::new();
+        let mut inner_args = BTreeMap::new();
+
+        inner_args.insert("id".into(), BTypes::BSTRING(id.into()));
+        outer_args.insert("y".into(), BTypes::BSTRING(b"r".into()));
+
+        match response {
+            ResponseType::Ping | ResponseType::AnnouncePeer => (),
+            ResponseType::FindNode { nodes } => {
+                let mut ip_node = Vec::new();
+                nodes.into_iter().for_each(|(id, url)| {
+                    ip_node.extend_from_slice(&id);
+                    ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
+                });
+                inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
+            }
+            ResponseType::GetPeers { token, vals } => {
+                let mut ip_node = Vec::new();
+                if let Peers::Nodes(nodes) = vals {
+                    nodes.into_iter().for_each(|(id, url)| {
+                        ip_node.extend_from_slice(&id);
+                        ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
+                    });
+                    inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
+                } else if let Peers::Values(v) = vals {
+                    v.into_iter().for_each(|url| {
+                        ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
+                    });
+                    inner_args.insert("values".into(), BTypes::BSTRING(ip_node));
+                }
+                if let Some(t) = token {
+                    inner_args.insert("token".into(), BTypes::BSTRING(t.into()));
+                }
+            }
+        }
+
+        outer_args.insert("r".into(), BTypes::DICT(inner_args));
+        outer_args.insert("t".into(), BTypes::BSTRING(tid.into()));
+        BTypes::DICT(outer_args)
     }
-    fn error_btrees() {
-        todo!()
+    fn error_btrees(tid: [u8; 2], e: DHTError) -> BTypes {
+        let mut outer_args: BTreeMap<String, BTypes> = BTreeMap::new();
+
+        outer_args.insert("y".into(), BTypes::BSTRING(b"e".into()));
+        outer_args.insert("t".into(), BTypes::BSTRING(tid.into()));
+
+        let code = BTypes::INT(e.error_code().into());
+        let message = BTypes::BSTRING(e.error_message().into());
+
+        let combined_message = vec![code, message];
+        outer_args.insert("e".into(), BTypes::LIST(combined_message));
+        BTypes::DICT(outer_args)
     }
 }
 
@@ -338,7 +389,10 @@ mod test {
 
     use uttd::url::Url;
 
-    use crate::serde::{MessageTag, Peers, QueryType, ResponseType, Vec2Kprc};
+    use crate::serde::{
+        MessageTag::{self, Ping},
+        Peers, QueryType, ResponseType, Vec2Kprc,
+    };
 
     use super::{MessageType, KRPC};
 
@@ -437,10 +491,22 @@ mod test {
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
         let serialized_krpc = krpc.clone().serialize();
-        // currently fails because deserialization for Query isn't implemented, only Response.
         let deserialized_krpc: KRPC = Vec2Kprc::into(serialized_krpc, None).unwrap();
         assert_eq!(krpc, deserialized_krpc);
     }
+
+    #[test]
+    fn test_serialized_response() {
+        let message = MessageType::Response {
+            id: [0; 20],
+            response: crate::serde::ResponseType::Ping,
+        };
+        let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
+        let serialized_krpc = krpc.clone().serialize();
+        let deserialized_krpc: KRPC = Vec2Kprc::into(serialized_krpc, Some(Ping)).unwrap();
+        assert_eq!(krpc, deserialized_krpc);
+    }
+
     #[test]
     fn serializae_announce() {
         let ap = QueryType::AnnouncePeer {
