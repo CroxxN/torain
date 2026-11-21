@@ -7,7 +7,7 @@ use crate::error::{self, DHTError, SerdeError};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct KRPC {
-    pub transact_id: [u8; 2],
+    pub transact_id: [u8; 2], // might be more than 2 bytes in actual implementation.
     pub message_type: MessageType,
 }
 
@@ -45,8 +45,8 @@ pub enum QueryType {
     AnnouncePeer {
         implied_port: bool,
         info_hash: [u8; 20],
-        port: u32,
-        token: [u8; 20],
+        port: u16,
+        token: [u8; 20], // make a variable length holder for token
     },
 }
 
@@ -67,16 +67,6 @@ pub enum ResponseType {
 pub enum Peers {
     Values(Vec<Url>),
     Nodes(Vec<([u8; 20], Url)>),
-}
-
-pub trait Vec2Kprc {
-    type Error;
-    fn into(message: Vec<u8>, hint: Option<MessageTag>) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-    fn de_error(error: &BTypes) -> Result<MessageType, Self::Error>;
-    fn de_response(response: &BTypes, hint: MessageTag) -> Result<MessageType, Self::Error>;
-    fn de_query(query: &BTypes, query_string: String) -> Result<MessageType, Self::Error>;
 }
 
 impl KRPC {
@@ -159,18 +149,19 @@ impl KRPC {
                 inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
             }
             ResponseType::GetPeers { token, vals } => {
-                let mut ip_node = Vec::new();
                 if let Peers::Nodes(nodes) = vals {
+                    let mut ip_node = Vec::new();
                     nodes.into_iter().for_each(|(id, url)| {
                         ip_node.extend_from_slice(&id);
                         ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
                     });
                     inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
                 } else if let Peers::Values(v) = vals {
-                    v.into_iter().for_each(|url| {
-                        ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
-                    });
-                    inner_args.insert("values".into(), BTypes::BSTRING(ip_node));
+                    let ip_node = v
+                        .into_iter()
+                        .map(|url| BTypes::BSTRING(url.to_bytes().unwrap()))
+                        .collect();
+                    inner_args.insert("values".into(), BTypes::LIST(ip_node));
                 }
                 if let Some(t) = token {
                     inner_args.insert("token".into(), BTypes::BSTRING(t.into()));
@@ -195,11 +186,7 @@ impl KRPC {
         outer_args.insert("e".into(), BTypes::LIST(combined_message));
         BTypes::DICT(outer_args)
     }
-}
-
-impl Vec2Kprc for KRPC {
-    type Error = error::SerdeError;
-    fn into(message: Vec<u8>, hint: Option<MessageTag>) -> Result<Self, Self::Error> {
+    pub fn get_tt(message: Vec<u8>) -> Result<(Vec<u8>, BTreeMap<String, BTypes>), SerdeError> {
         let deserialized =
             if let BTypes::DICT(d) = bencode::bencode::decode(&mut message.into_iter())? {
                 d
@@ -207,7 +194,13 @@ impl Vec2Kprc for KRPC {
                 // TODO: fix this
                 return Err(error::SerdeError::BencodeGenericError);
             };
-
+        let transaction_id: Vec<u8> = deserialized.get("t").unwrap().try_into()?;
+        Ok((transaction_id, deserialized))
+    }
+    pub fn convert(
+        deserialized: BTreeMap<String, BTypes>,
+        hint: Option<MessageTag>,
+    ) -> Result<Self, SerdeError> {
         let transaction_id: Vec<u8> = deserialized.get("t").unwrap().try_into()?;
         let y: String = deserialized.get("y").unwrap().try_into()?;
         // The key 'y' can have one of three values:
@@ -326,7 +319,7 @@ impl Vec2Kprc for KRPC {
             }
         }
     }
-    fn de_query(query: &BTypes, query_string: String) -> Result<MessageType, Self::Error> {
+    fn de_query(query: &BTypes, query_string: String) -> Result<MessageType, SerdeError> {
         let a;
         if let BTypes::DICT(key_a) = query {
             a = key_a;
@@ -363,7 +356,7 @@ impl Vec2Kprc for KRPC {
                 let info_hash = a.get("info_hash").unwrap().try_into()?;
 
                 let port: usize = a.get("port").unwrap().try_into()?;
-                let port = port as u32;
+                let port = port as u16;
 
                 let token = a.get("token").unwrap().try_into()?;
 
@@ -391,7 +384,7 @@ mod test {
 
     use crate::serde::{
         MessageTag::{self, Ping},
-        Peers, QueryType, ResponseType, Vec2Kprc,
+        Peers, QueryType, ResponseType,
     };
 
     use super::{MessageType, KRPC};
@@ -401,7 +394,8 @@ mod test {
         let bytes = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re"
             .as_bytes()
             .to_vec();
-        let res: KRPC = Vec2Kprc::into(bytes, Some(MessageTag::Ping)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes).unwrap();
+        let res = KRPC::convert(res, Some(MessageTag::Ping)).unwrap();
         assert_eq!(res.transact_id, ['a' as u8, 'a' as u8])
     }
     #[test]
@@ -409,7 +403,8 @@ mod test {
         let bytes = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re"
             .as_bytes()
             .to_vec();
-        let res: KRPC = Vec2Kprc::into(bytes, Some(MessageTag::Ping)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes).unwrap();
+        let res = KRPC::convert(res, Some(MessageTag::Ping)).unwrap();
         assert_ne!(res.transact_id, ['b' as u8, 'b' as u8])
     }
     #[test]
@@ -418,7 +413,8 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        let res: KRPC = Vec2Kprc::into(bytes, Some(MessageTag::Ping)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes).unwrap();
+        let res = KRPC::convert(res, Some(MessageTag::Ping)).unwrap();
 
         let expected_res = KRPC {
             transact_id: ['a' as u8, 'a' as u8],
@@ -435,7 +431,8 @@ mod test {
         let bytes =
             b"d1:rd2:id20:abcdefghij01234567895:token8:deadbeef6:valuesl6:\x7f\x00\x00\x01\x1a\xe1ee1:t2:aa1:y1:re"
                 .to_vec();
-        let res: KRPC = Vec2Kprc::into(bytes, Some(MessageTag::GetPeers)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes).unwrap();
+        let res = KRPC::convert(res, Some(MessageTag::GetPeers)).unwrap();
 
         let mut token = [0u8; 20];
         token[0..8].copy_from_slice(b"deadbeef");
@@ -463,7 +460,8 @@ mod test {
         let bytes =
             b"d1:rd2:id20:abcdefghij01234567895:nodes26:00000000000000000001\x7f\x00\x00\x01\x1a\xe1e1:t2:aa1:y1:re"
                 .to_vec();
-        let res: KRPC = Vec2Kprc::into(bytes, Some(MessageTag::GetPeers)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes).unwrap();
+        let res = KRPC::convert(res, Some(MessageTag::GetPeers)).unwrap();
 
         let url = Url::new("udp://127.0.0.1:6881").unwrap();
 
@@ -491,8 +489,9 @@ mod test {
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
         let serialized_krpc = krpc.clone().serialize();
-        let deserialized_krpc: KRPC = Vec2Kprc::into(serialized_krpc, None).unwrap();
-        assert_eq!(krpc, deserialized_krpc);
+        let (_, res) = KRPC::get_tt(serialized_krpc).unwrap();
+        let res = KRPC::convert(res, None).unwrap();
+        assert_eq!(krpc, res);
     }
 
     #[test]
@@ -503,7 +502,8 @@ mod test {
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
         let serialized_krpc = krpc.clone().serialize();
-        let deserialized_krpc: KRPC = Vec2Kprc::into(serialized_krpc, Some(Ping)).unwrap();
+        let (_, res) = KRPC::get_tt(serialized_krpc).unwrap();
+        let deserialized_krpc = KRPC::convert(res, Some(Ping)).unwrap();
         assert_eq!(krpc, deserialized_krpc);
     }
 
@@ -524,7 +524,8 @@ mod test {
 
         let serialized_krpc = krpc.clone().serialize();
 
-        let deserialized_krpc: KRPC = Vec2Kprc::into(serialized_krpc, None).unwrap();
+        let (_, res) = KRPC::get_tt(serialized_krpc).unwrap();
+        let deserialized_krpc = KRPC::convert(res, None).unwrap();
         assert_eq!(krpc, deserialized_krpc);
     }
 }

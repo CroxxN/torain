@@ -37,6 +37,8 @@ impl<'a> RequestBucket<'a> {
 #[cfg(test)]
 mod tests {
 
+    use std::collections::BTreeMap;
+
     use uttd::url::Url;
     use uttd::Stream;
 
@@ -69,7 +71,8 @@ mod tests {
         let mut resp = vec![0; 100];
         _ = stream.send(&krpc_bytes, &mut resp);
         // let resp = crate::serde::Vec::deserialize_bytes(resp);
-        let resp: KRPC = crate::serde::Vec2Kprc::into(resp, Some(MessageTag::Ping)).unwrap();
+        let (_, resp) = KRPC::get_tt(resp).unwrap();
+        let resp = KRPC::convert(resp, Some(MessageTag::Ping)).unwrap();
         assert_eq!(resp.transact_id, [b'a', b'a']);
     }
     #[test]
@@ -97,7 +100,8 @@ mod tests {
 
         resp.iter().for_each(|x| print!("{}", *x as char));
 
-        let resp = <KRPC as Vec2Kprc>::into(resp, Some(MessageTag::GetPeers));
+        let (_, resp) = KRPC::get_tt(resp).unwrap();
+        let resp = KRPC::convert(resp, Some(MessageTag::GetPeers));
 
         assert_eq!(resp.unwrap().transact_id, [b'a', b'a']);
     }

@@ -155,7 +155,7 @@ impl Stream {
 
     fn send_udp(stream: &mut UdpSocket, data: &[u8], res: &mut Vec<u8>) -> Result<(), UttdError> {
         // if timeout, retry for 5 times
-        for _ in 0..5 {
+        for _ in 0..2 {
             stream.send(data).unwrap();
             if stream.recv(res).is_ok() {
                 break;
