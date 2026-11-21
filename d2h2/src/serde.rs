@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bencode::bencode::BTypes;
 use uttd::url::{Scheme, Url};
 
-use crate::error::{self, DHTError, SerdeError};
+use crate::error::{self, DHTError, Keys, SerdeError};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct KRPC {
@@ -76,12 +76,12 @@ impl KRPC {
             message_type: method,
         }
     }
-    pub fn serialize(self) -> Vec<u8> {
-        let btrees = self.btrees();
-        bencode::benencode::ser(&btrees)
+    pub fn serialize(self) -> Result<Vec<u8>, SerdeError> {
+        let btrees = self.btrees()?;
+        Ok(bencode::benencode::ser(&btrees))
     }
 
-    fn btrees(self) -> BTypes {
+    fn btrees(self) -> Result<BTypes, SerdeError> {
         match self.message_type {
             MessageType::Query { id, query } => Self::query_btrees(self.transact_id, id, query),
             MessageType::Response { id, response } => {
@@ -91,7 +91,7 @@ impl KRPC {
         }
     }
 
-    fn query_btrees(tid: [u8; 2], id: [u8; 20], query: QueryType) -> BTypes {
+    fn query_btrees(tid: [u8; 2], id: [u8; 20], query: QueryType) -> Result<BTypes, SerdeError> {
         let mut outer_args: BTreeMap<String, BTypes> = BTreeMap::new();
         let mut inner_args = BTreeMap::new();
 
@@ -129,9 +129,13 @@ impl KRPC {
         outer_args.insert("a".into(), BTypes::DICT(inner_args));
         outer_args.insert("t".into(), BTypes::BSTRING(tid.into()));
 
-        BTypes::DICT(outer_args)
+        Ok(BTypes::DICT(outer_args))
     }
-    fn response_btrees(tid: [u8; 2], id: [u8; 20], response: ResponseType) -> BTypes {
+    fn response_btrees(
+        tid: [u8; 2],
+        id: [u8; 20],
+        response: ResponseType,
+    ) -> Result<BTypes, SerdeError> {
         let mut outer_args: BTreeMap<String, BTypes> = BTreeMap::new();
         let mut inner_args = BTreeMap::new();
 
@@ -142,25 +146,27 @@ impl KRPC {
             ResponseType::Ping | ResponseType::AnnouncePeer => (),
             ResponseType::FindNode { nodes } => {
                 let mut ip_node = Vec::new();
-                nodes.into_iter().for_each(|(id, url)| {
+                for (id, url) in nodes.into_iter() {
                     ip_node.extend_from_slice(&id);
-                    ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
-                });
+                    ip_node.extend_from_slice(url.to_bytes()?.as_slice());
+                }
                 inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
             }
             ResponseType::GetPeers { token, vals } => {
                 if let Peers::Nodes(nodes) = vals {
                     let mut ip_node = Vec::new();
-                    nodes.into_iter().for_each(|(id, url)| {
+                    for (id, url) in nodes.into_iter() {
                         ip_node.extend_from_slice(&id);
-                        ip_node.extend_from_slice(url.to_bytes().unwrap().as_slice());
-                    });
+                        ip_node.extend_from_slice(url.to_bytes()?.as_slice());
+                    }
                     inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
                 } else if let Peers::Values(v) = vals {
                     let ip_node = v
                         .into_iter()
-                        .map(|url| BTypes::BSTRING(url.to_bytes().unwrap()))
-                        .collect();
+                        .map(|url| -> Result<_, SerdeError> {
+                            Ok(BTypes::BSTRING(url.to_bytes()?))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
                     inner_args.insert("values".into(), BTypes::LIST(ip_node));
                 }
                 if let Some(t) = token {
@@ -171,9 +177,9 @@ impl KRPC {
 
         outer_args.insert("r".into(), BTypes::DICT(inner_args));
         outer_args.insert("t".into(), BTypes::BSTRING(tid.into()));
-        BTypes::DICT(outer_args)
+        Ok(BTypes::DICT(outer_args))
     }
-    fn error_btrees(tid: [u8; 2], e: DHTError) -> BTypes {
+    fn error_btrees(tid: [u8; 2], e: DHTError) -> Result<BTypes, SerdeError> {
         let mut outer_args: BTreeMap<String, BTypes> = BTreeMap::new();
 
         outer_args.insert("y".into(), BTypes::BSTRING(b"e".into()));
@@ -184,7 +190,7 @@ impl KRPC {
 
         let combined_message = vec![code, message];
         outer_args.insert("e".into(), BTypes::LIST(combined_message));
-        BTypes::DICT(outer_args)
+        Ok(BTypes::DICT(outer_args))
     }
     pub fn get_tt(message: Vec<u8>) -> Result<(Vec<u8>, BTreeMap<String, BTypes>), SerdeError> {
         let deserialized =
@@ -194,31 +200,54 @@ impl KRPC {
                 // TODO: fix this
                 return Err(error::SerdeError::BencodeGenericError);
             };
-        let transaction_id: Vec<u8> = deserialized.get("t").unwrap().try_into()?;
+        let transaction_id: Vec<u8> = deserialized
+            .get("t")
+            .ok_or(SerdeError::MissingKey(Keys::TransactionId))?
+            .try_into()?;
         Ok((transaction_id, deserialized))
     }
     pub fn convert(
         deserialized: BTreeMap<String, BTypes>,
         hint: Option<MessageTag>,
     ) -> Result<Self, SerdeError> {
-        let transaction_id: Vec<u8> = deserialized.get("t").unwrap().try_into()?;
-        let y: String = deserialized.get("y").unwrap().try_into()?;
+        let transaction_id: Vec<u8> = deserialized
+            .get("t")
+            .ok_or(SerdeError::MissingKey(Keys::TransactionId))?
+            .try_into()?;
+        let y: String = deserialized
+            .get("y")
+            .ok_or(SerdeError::MissingKey(Keys::MessageType))?
+            .try_into()?;
         // The key 'y' can have one of three values:
         //     a. 'e': Error
         //     b. 'r': Response Packet
         //     c. 'q': Query Packet -> 'q' is named, 'a' contains the actual arguments
         let message = match y.as_str() {
-            "e" => Self::de_error(deserialized.get("e").unwrap()),
-            "r" => Self::de_response(deserialized.get("r").unwrap(), hint.unwrap()),
+            "e" => Self::de_error(
+                deserialized
+                    .get("e")
+                    .ok_or(SerdeError::MissingKey(Keys::Error))?,
+            ),
+            "r" => Self::de_response(
+                deserialized
+                    .get("r")
+                    .ok_or(SerdeError::MissingKey(Keys::Response))?,
+                hint.ok_or(SerdeError::NoHintProvided)?,
+            ),
             "q" => Self::de_query(
-                deserialized.get("a").unwrap(),
-                deserialized.get("q").unwrap().try_into().unwrap(),
+                deserialized
+                    .get("a")
+                    .ok_or(SerdeError::MissingKey(Keys::QueryArguments))?,
+                deserialized
+                    .get("q")
+                    .ok_or(SerdeError::MissingKey(Keys::Query))?
+                    .try_into()?,
             ),
             _ => {
                 return Err(SerdeError::InvalidMessageType);
             }
         };
-        let message = message.unwrap();
+        let message = message?;
         Ok(Self {
             transact_id: transaction_id.try_into().unwrap(), // remove unwrap
             message_type: message,
@@ -249,8 +278,8 @@ impl KRPC {
             return Err(error::SerdeError::UnknownDHTError);
         };
 
-        let id = if let BTypes::BSTRING(bs) = d.get("id").unwrap() {
-            bs.clone().try_into().unwrap()
+        let id = if let BTypes::BSTRING(bs) = d.get("id").ok_or(SerdeError::MissingKey(Keys::Id))? {
+            bs.clone().try_into()?
         } else {
             return Err(error::SerdeError::NoValidIDPresent);
         };
@@ -274,9 +303,13 @@ impl KRPC {
                     None
                 };
                 if let Some(BTypes::BSTRING(bs)) = d.get("nodes") {
+                    if bs.len() % 26 != 0 {
+                        return Err(SerdeError::BencodeGenericError);
+                    }
                     let ips = bs
                         .chunks(26)
                         .map(|x| {
+                            // unwraps below is okay, because we already checked bs.len() % 26 == 0
                             let node_id: [u8; 20] = x[0..20].try_into().unwrap();
                             let ip: [u8; 4] = x[20..24].try_into().unwrap();
                             let port = u16::from_be_bytes(x[24..26].try_into().unwrap());
@@ -294,13 +327,13 @@ impl KRPC {
                     Ok(MessageType::Response { id, response })
                 } else if let Some(BTypes::LIST(l)) = d.get("values") {
                     // create urls from the compact url info contained in bs
-                    // this containes the actual peers for the find_peers query
+                    // this contains the actual peers for the find_peers query
                     let ips = l
                         .into_iter()
                         .filter_map(|b| match b {
                             BTypes::BSTRING(bs) if bs.len() >= 6 => {
-                                let ip: [u8; 4] = bs[0..4].try_into().unwrap();
-                                let port = u16::from_be_bytes(bs[4..6].try_into().unwrap());
+                                let ip: [u8; 4] = bs[0..4].try_into().ok()?;
+                                let port = u16::from_be_bytes(bs[4..6].try_into().ok()?);
                                 Some(Url::from_ip_bytes(&ip, port, Scheme::UDP))
                             }
                             _ => None,
@@ -327,8 +360,11 @@ impl KRPC {
             return Err(error::SerdeError::InvalidMessageType);
         }
 
-        let id: Vec<u8> = a.get("id").unwrap().try_into()?;
-        let id = id.try_into().unwrap();
+        let id: Vec<u8> = a
+            .get("id")
+            .ok_or(SerdeError::MissingKey(Keys::Id))?
+            .try_into()?;
+        let id = id.try_into()?;
 
         match query_string.as_str() {
             "ping" => Ok(MessageType::Query {
@@ -336,29 +372,47 @@ impl KRPC {
                 query: QueryType::Ping,
             }),
             "find_node" => {
-                let target = a.get("target").unwrap().try_into()?;
+                let target = a
+                    .get("target")
+                    .ok_or(SerdeError::MissingKey(Keys::Target))?
+                    .try_into()?;
                 Ok(MessageType::Query {
                     id,
                     query: QueryType::FindNode { target },
                 })
             }
             "get_peers" => {
-                let info_hash = a.get("info_hash").unwrap().try_into()?;
+                let info_hash = a
+                    .get("info_hash")
+                    .ok_or(SerdeError::MissingKey(Keys::InfoHash))?
+                    .try_into()?;
                 Ok(MessageType::Query {
                     id,
                     query: QueryType::GetPeers { info_hash },
                 })
             }
             "announce_peer" => {
-                let implied_port: usize = a.get("implied_port").unwrap().try_into()?;
+                let implied_port: usize = a
+                    .get("implied_port")
+                    .ok_or(SerdeError::MissingKey(Keys::ImpliedPort))?
+                    .try_into()?;
                 let implied_port = implied_port != 0;
 
-                let info_hash = a.get("info_hash").unwrap().try_into()?;
+                let info_hash = a
+                    .get("info_hash")
+                    .ok_or(SerdeError::MissingKey(Keys::InfoHash))?
+                    .try_into()?;
 
-                let port: usize = a.get("port").unwrap().try_into()?;
+                let port: usize = a
+                    .get("port")
+                    .ok_or(SerdeError::MissingKey(Keys::Port))?
+                    .try_into()?;
                 let port = port as u16;
 
-                let token = a.get("token").unwrap().try_into()?;
+                let token = a
+                    .get("token")
+                    .ok_or(SerdeError::MissingKey(Keys::Token))?
+                    .try_into()?;
 
                 Ok(MessageType::Query {
                     id,
@@ -382,69 +436,74 @@ mod test {
 
     use uttd::url::Url;
 
-    use crate::serde::{
-        MessageTag::{self, Ping},
-        Peers, QueryType, ResponseType,
+    use crate::{
+        error::{Keys, SerdeError},
+        serde::{
+            MessageTag::{self, Ping},
+            Peers, QueryType, ResponseType,
+        },
     };
 
     use super::{MessageType, KRPC};
 
+    // TODO: return SerdeError instead of unwrap
+
     #[test]
-    fn deserialize_response_transaction_id() {
+    fn deserialize_response_transaction_id() -> Result<(), SerdeError> {
         let bytes = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re"
             .as_bytes()
             .to_vec();
-        let (_, res) = KRPC::get_tt(bytes).unwrap();
-        let res = KRPC::convert(res, Some(MessageTag::Ping)).unwrap();
-        assert_eq!(res.transact_id, ['a' as u8, 'a' as u8])
+        let (_, res) = KRPC::get_tt(bytes)?;
+        let res = KRPC::convert(res, Some(MessageTag::Ping))?;
+        Ok(assert_eq!(res.transact_id, ['a' as u8, 'a' as u8]))
     }
     #[test]
-    fn deserialize_response_transaction_id_failed() {
+    fn deserialize_response_transaction_id_failed() -> Result<(), SerdeError> {
         let bytes = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re"
             .as_bytes()
             .to_vec();
-        let (_, res) = KRPC::get_tt(bytes).unwrap();
-        let res = KRPC::convert(res, Some(MessageTag::Ping)).unwrap();
-        assert_ne!(res.transact_id, ['b' as u8, 'b' as u8])
+        let (_, res) = KRPC::get_tt(bytes)?;
+        let res = KRPC::convert(res, Some(MessageTag::Ping))?;
+        Ok(assert_ne!(res.transact_id, ['b' as u8, 'b' as u8]))
     }
     #[test]
-    fn deserialize_response_id() {
+    fn deserialize_response_id() -> Result<(), SerdeError> {
         let bytes = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re"
             .as_bytes()
             .to_vec();
 
-        let (_, res) = KRPC::get_tt(bytes).unwrap();
-        let res = KRPC::convert(res, Some(MessageTag::Ping)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes)?;
+        let res = KRPC::convert(res, Some(MessageTag::Ping))?;
 
         let expected_res = KRPC {
             transact_id: ['a' as u8, 'a' as u8],
             message_type: MessageType::Response {
-                id: b"mnopqrstuvwxyz123456".to_vec().try_into().unwrap(),
+                id: b"mnopqrstuvwxyz123456".to_vec().try_into()?,
                 response: ResponseType::Ping,
             },
         };
 
-        assert_eq!(res, expected_res);
+        Ok(assert_eq!(res, expected_res))
     }
     #[test]
-    fn deserialize_peers() {
+    fn deserialize_peers() -> Result<(), SerdeError> {
         let bytes =
             b"d1:rd2:id20:abcdefghij01234567895:token8:deadbeef6:valuesl6:\x7f\x00\x00\x01\x1a\xe1ee1:t2:aa1:y1:re"
                 .to_vec();
-        let (_, res) = KRPC::get_tt(bytes).unwrap();
-        let res = KRPC::convert(res, Some(MessageTag::GetPeers)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes)?;
+        let res = KRPC::convert(res, Some(MessageTag::GetPeers))?;
 
         let mut token = [0u8; 20];
         token[0..8].copy_from_slice(b"deadbeef");
         let token = Some(token);
-        let urls = vec![Url::new("udp://127.0.0.1:6881").unwrap()];
+        let urls = vec![Url::new("udp://127.0.0.1:6881")?];
 
         let expected_response = ResponseType::GetPeers {
             token,
             vals: Peers::Values(urls),
         };
 
-        assert_eq!(
+        Ok(assert_eq!(
             res,
             KRPC {
                 transact_id: [b'a', b'a'],
@@ -453,23 +512,23 @@ mod test {
                     response: expected_response
                 }
             }
-        );
+        ))
     }
     #[test]
-    fn deserialize_nodes() {
+    fn deserialize_nodes() -> Result<(), SerdeError> {
         let bytes =
             b"d1:rd2:id20:abcdefghij01234567895:nodes26:00000000000000000001\x7f\x00\x00\x01\x1a\xe1e1:t2:aa1:y1:re"
                 .to_vec();
-        let (_, res) = KRPC::get_tt(bytes).unwrap();
-        let res = KRPC::convert(res, Some(MessageTag::GetPeers)).unwrap();
+        let (_, res) = KRPC::get_tt(bytes)?;
+        let res = KRPC::convert(res, Some(MessageTag::GetPeers))?;
 
-        let url = Url::new("udp://127.0.0.1:6881").unwrap();
+        let url = Url::new("udp://127.0.0.1:6881")?;
 
         let expected_response = ResponseType::GetPeers {
             token: None,
             vals: Peers::Nodes(vec![(b"00000000000000000001".to_owned().into(), url)]),
         };
-        assert_eq!(
+        Ok(assert_eq!(
             res,
             KRPC {
                 transact_id: [b'a', b'a'],
@@ -478,37 +537,37 @@ mod test {
                     response: expected_response
                 }
             }
-        );
+        ))
     }
 
     #[test]
-    fn test_serialize() {
+    fn test_serialize() -> Result<(), SerdeError> {
         let message = MessageType::Query {
             id: [0; 20],
             query: crate::serde::QueryType::Ping,
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
-        let serialized_krpc = krpc.clone().serialize();
-        let (_, res) = KRPC::get_tt(serialized_krpc).unwrap();
-        let res = KRPC::convert(res, None).unwrap();
-        assert_eq!(krpc, res);
+        let serialized_krpc = krpc.clone().serialize()?;
+        let (_, res) = KRPC::get_tt(serialized_krpc)?;
+        let res = KRPC::convert(res, None)?;
+        Ok(assert_eq!(krpc, res))
     }
 
     #[test]
-    fn test_serialized_response() {
+    fn test_serialized_response() -> Result<(), SerdeError> {
         let message = MessageType::Response {
             id: [0; 20],
             response: crate::serde::ResponseType::Ping,
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
-        let serialized_krpc = krpc.clone().serialize();
-        let (_, res) = KRPC::get_tt(serialized_krpc).unwrap();
-        let deserialized_krpc = KRPC::convert(res, Some(Ping)).unwrap();
-        assert_eq!(krpc, deserialized_krpc);
+        let serialized_krpc = krpc.clone().serialize()?;
+        let (_, res) = KRPC::get_tt(serialized_krpc)?;
+        let deserialized_krpc = KRPC::convert(res, Some(Ping))?;
+        Ok(assert_eq!(krpc, deserialized_krpc))
     }
 
     #[test]
-    fn serializae_announce() {
+    fn serializae_announce() -> Result<(), SerdeError> {
         let ap = QueryType::AnnouncePeer {
             implied_port: true,
             info_hash: [0; 20],
@@ -522,10 +581,26 @@ mod test {
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
 
-        let serialized_krpc = krpc.clone().serialize();
+        let serialized_krpc = krpc.clone().serialize()?;
 
-        let (_, res) = KRPC::get_tt(serialized_krpc).unwrap();
-        let deserialized_krpc = KRPC::convert(res, None).unwrap();
-        assert_eq!(krpc, deserialized_krpc);
+        let (_, res) = KRPC::get_tt(serialized_krpc)?;
+        let deserialized_krpc = KRPC::convert(res, None)?;
+        Ok(assert_eq!(krpc, deserialized_krpc))
+    }
+    #[test]
+    fn error() {
+        let bytes = "d1:rd2:id20:mnopqrstuvwxyz123456e1:y1:re"
+            .as_bytes()
+            .to_vec();
+        let res = KRPC::get_tt(bytes);
+        assert_eq!(res, Err(SerdeError::MissingKey(Keys::TransactionId)))
+    }
+    // failing, says pass but the error isn't expected
+    #[test]
+    fn slice_error() {
+        let bytes = "d1:rd2:id99:mnope1:t2:aa1:y1:re".as_bytes().to_vec();
+        let res = KRPC::get_tt(bytes);
+        dbg!(&res);
+        assert_eq!(res, Err(SerdeError::MissingKey(Keys::TransactionId)))
     }
 }

@@ -1,7 +1,9 @@
 use bencode::error;
 use bencode::utils;
+use std::array::TryFromSliceError;
 use std::{fmt::Display, time::SystemTimeError};
 use uttd::error::UrlError;
+use uttd::url::Url;
 
 #[derive(Debug, Clone)]
 pub enum DHTError {
@@ -82,8 +84,49 @@ pub enum SerdeError {
     UnknownDHTError,
     NoValidIDPresent,
     InvalidMessageType,
+    MissingKey(Keys),
+    NoHintProvided,
+    SliceConversion(TryFromSliceError),
+    ParsingUrl(UrlError),
+    VecSlice,
     // TODO: Remove
     UnimplementedQueryParsing,
+}
+#[derive(Debug, PartialEq)]
+pub enum Keys {
+    TransactionId,
+    MessageType,
+    Response,
+    Query,
+    QueryArguments,
+    Id,
+    Target,
+    Token,
+    InfoHash,
+    Values,
+    ImpliedPort,
+    Port,
+    Node,
+    Error,
+}
+impl PartialEq for SerdeError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ParsingBencode(a), Self::ParsingBencode(b)) => a == b,
+            (Self::KeyError(a), Self::KeyError(b)) => a == b,
+            (Self::BencodeGenericError, Self::BencodeGenericError) => true,
+            (Self::UnknownDHTError, Self::UnknownDHTError) => true,
+            (Self::NoValidIDPresent, Self::NoValidIDPresent) => true,
+            (Self::InvalidMessageType, Self::InvalidMessageType) => true,
+            (Self::MissingKey(a), Self::MissingKey(b)) => a == b,
+            (Self::NoHintProvided, Self::NoHintProvided) => true,
+            (Self::SliceConversion(_), Self::SliceConversion(_)) => true,
+            (Self::ParsingUrl(a), Self::ParsingUrl(b)) => a == b,
+            (Self::VecSlice, Self::VecSlice) => true,
+            (Self::UnimplementedQueryParsing, Self::UnimplementedQueryParsing) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for SerdeError {
@@ -100,6 +143,32 @@ impl Display for SerdeError {
                 f,
                 "Warning: Implemented DHT message parsing. You should NOT have reached this"
             ),
+            Self::NoHintProvided => write!(f, "No deocde hint provided"),
+            Self::SliceConversion(x) => write!(f, "Failed to convert slice: {x}"),
+            Self::ParsingUrl(u) => write!(f, "Failed to parse url: {u}"),
+            Self::VecSlice => write!(f, "Failed to convert vec to slice"),
+            Self::MissingKey(k) => write!(f, "{k}"),
+        }
+    }
+}
+
+impl Display for Keys {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TransactionId => write!(f, "Missing Key 'tt'"),
+            Self::MessageType => write!(f, "Missing key 'y'"),
+            Self::Response => write!(f, "Missing key 'r'"),
+            Self::Query => write!(f, "Missing key 'q'"),
+            Self::QueryArguments => write!(f, "Missing key 'a'"),
+            Self::Id => write!(f, "Missing key 'id'"),
+            Self::Target => write!(f, "Missing key 'target'"),
+            Self::Token => write!(f, "Missing key 'token'"),
+            Self::InfoHash => write!(f, "Missing key 'info_hash'"),
+            Self::ImpliedPort => write!(f, "Missing key 'implied_port"),
+            Self::Port => write!(f, "Missing key 'port"),
+            Self::Values => write!(f, "Missing key 'values'"),
+            Self::Node => write!(f, "Missing key 'node'"),
+            Self::Error => write!(f, "Missing key 'e'"),
         }
     }
 }
@@ -113,6 +182,24 @@ impl From<error::DecodeError> for SerdeError {
 impl From<utils::BencodeErr> for SerdeError {
     fn from(value: utils::BencodeErr) -> Self {
         Self::KeyError(value)
+    }
+}
+
+impl From<TryFromSliceError> for SerdeError {
+    fn from(value: TryFromSliceError) -> Self {
+        Self::SliceConversion(value)
+    }
+}
+
+impl From<UrlError> for SerdeError {
+    fn from(value: UrlError) -> Self {
+        Self::ParsingUrl(value)
+    }
+}
+
+impl From<Vec<u8>> for SerdeError {
+    fn from(value: Vec<u8>) -> Self {
+        Self::VecSlice
     }
 }
 

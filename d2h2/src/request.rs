@@ -63,7 +63,7 @@ mod tests {
             query: crate::serde::QueryType::Ping,
         };
         let krpc = KRPC::new(['a' as u8, 'a' as u8], message);
-        let krpc_bytes = krpc.clone().serialize();
+        let krpc_bytes = krpc.clone().serialize().unwrap();
         krpc_bytes.iter().for_each(|x| print!("{}", *x as char));
         // dbg!(&krpc_bytes);
         let mut stream =
@@ -90,7 +90,7 @@ mod tests {
 
         let krpc = KRPC::new(transaction_id, message);
 
-        let krpc_bytes = krpc.serialize();
+        let krpc_bytes = krpc.serialize().unwrap();
 
         let mut stream =
             Stream::new(&Url::new("udp://dht.transmissionbt.com:6881").unwrap()).unwrap();
