@@ -6,10 +6,10 @@ use crypto::tinymt::TinyMT;
 
 // use crate::url::Url;
 
-const ST_DATA: u8 = 0;
-const ST_FIN: u8 = 1;
-const ST_STATE: u8 = 2;
-const ST_RESET: u8 = 3;
+// const ST_DATA: u8 = 0;
+// const ST_FIN: u8 = 1;
+// const ST_STATE: u8 = 2;
+// const ST_RESET: u8 = 3;
 const ST_SYN: u8 = 4;
 
 /// Async uTorrent Transport Protocol

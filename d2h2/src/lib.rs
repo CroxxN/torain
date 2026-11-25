@@ -13,7 +13,7 @@ mod kademlia;
 mod request;
 mod serde;
 
-use std::sync::mpsc::{self, channel};
+use std::sync::mpsc::{self};
 use std::sync::Arc;
 
 use driver::DHTCommands;
@@ -62,7 +62,7 @@ impl D2H2Client {
             ehandle: handle,
         })
     }
-    pub fn kademlia(rx: mpsc::Receiver<DHTCommands>) -> () {
+    pub fn kademlia(_rx: mpsc::Receiver<DHTCommands>) -> () {
         // _ = rx;
         // while let Ok(x) = rx.try_recv() {
 
@@ -71,7 +71,7 @@ impl D2H2Client {
         todo!()
     }
 
-    pub fn find_peers(&self, info_hash: &[u8; 20]) -> Result<Box<[Url]>, D2H2ClientError> {
+    pub fn find_peers(&self, _info_hash: &[u8; 20]) -> Result<Box<[Url]>, D2H2ClientError> {
         let urls: Arc<Vec<Url>> = Arc::new(Vec::new());
         // TODO:
         // 1. make requests self.paths

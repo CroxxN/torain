@@ -482,7 +482,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        let (tt, res) = KRPC::get_tt(bytes)?;
+        let (_, res) = KRPC::get_tt(bytes)?;
         let res = KRPC::convert(res, Some(MessageTag::Ping))?;
 
         let expected_res = KRPC {
