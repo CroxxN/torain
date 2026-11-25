@@ -54,7 +54,7 @@ pub enum QueryType {
 pub enum ResponseType {
     Ping,
     FindNode {
-        nodes: Vec<([u8; 20], Url)>,
+        nodes: Vec<NodeInfo>,
     },
     GetPeers {
         token: Option<[u8; 20]>, // though the BEP 005 says token is required, that's not the case practically. Many nodes don't treat the token like optional
@@ -66,7 +66,13 @@ pub enum ResponseType {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Peers {
     Values(Vec<Url>),
-    Nodes(Vec<([u8; 20], Url)>),
+    Nodes(Vec<NodeInfo>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct NodeInfo {
+    pub id: [u8; 20],
+    pub url: Url,
 }
 
 impl KRPC {
@@ -146,18 +152,18 @@ impl KRPC {
             ResponseType::Ping | ResponseType::AnnouncePeer => (),
             ResponseType::FindNode { nodes } => {
                 let mut ip_node = Vec::new();
-                for (id, url) in nodes.into_iter() {
-                    ip_node.extend_from_slice(&id);
-                    ip_node.extend_from_slice(url.to_bytes()?.as_slice());
+                for node_info in nodes.into_iter() {
+                    ip_node.extend_from_slice(&node_info.id);
+                    ip_node.extend_from_slice(node_info.url.to_bytes()?.as_slice());
                 }
                 inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
             }
             ResponseType::GetPeers { token, vals } => {
                 if let Peers::Nodes(nodes) = vals {
                     let mut ip_node = Vec::new();
-                    for (id, url) in nodes.into_iter() {
-                        ip_node.extend_from_slice(&id);
-                        ip_node.extend_from_slice(url.to_bytes()?.as_slice());
+                    for node_info in nodes.into_iter() {
+                        ip_node.extend_from_slice(&node_info.id);
+                        ip_node.extend_from_slice(node_info.url.to_bytes()?.as_slice());
                     }
                     inner_args.insert("nodes".into(), BTypes::BSTRING(ip_node));
                 } else if let Peers::Values(v) = vals {
@@ -193,6 +199,7 @@ impl KRPC {
         Ok(BTypes::DICT(outer_args))
     }
     pub fn get_tt(message: Vec<u8>) -> Result<(Vec<u8>, BTreeMap<String, BTypes>), SerdeError> {
+        // return actual typed tt?
         let deserialized =
             if let BTypes::DICT(d) = bencode::bencode::decode(&mut message.into_iter())? {
                 d
@@ -313,7 +320,10 @@ impl KRPC {
                             let node_id: [u8; 20] = x[0..20].try_into().unwrap();
                             let ip: [u8; 4] = x[20..24].try_into().unwrap();
                             let port = u16::from_be_bytes(x[24..26].try_into().unwrap());
-                            (node_id, Url::from_ip_bytes(&ip, port, Scheme::UDP))
+                            NodeInfo {
+                                id: node_id,
+                                url: Url::from_ip_bytes(&ip, port, Scheme::UDP),
+                            }
                         })
                         .collect();
                     let response = if hint == MessageTag::FindNode {
@@ -440,7 +450,7 @@ mod test {
         error::{Keys, SerdeError},
         serde::{
             MessageTag::{self, Ping},
-            Peers, QueryType, ResponseType,
+            NodeInfo, Peers, QueryType, ResponseType,
         },
     };
 
@@ -472,7 +482,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        let (_, res) = KRPC::get_tt(bytes)?;
+        let (tt, res) = KRPC::get_tt(bytes)?;
         let res = KRPC::convert(res, Some(MessageTag::Ping))?;
 
         let expected_res = KRPC {
@@ -526,7 +536,10 @@ mod test {
 
         let expected_response = ResponseType::GetPeers {
             token: None,
-            vals: Peers::Nodes(vec![(b"00000000000000000001".to_owned().into(), url)]),
+            vals: Peers::Nodes(vec![NodeInfo {
+                id: b"00000000000000000001".to_owned().into(),
+                url,
+            }]),
         };
         Ok(assert_eq!(
             res,
@@ -600,7 +613,6 @@ mod test {
     fn slice_error() {
         let bytes = "d1:rd2:id99:mnope1:t2:aa1:y1:re".as_bytes().to_vec();
         let res = KRPC::get_tt(bytes);
-        dbg!(&res);
         assert_eq!(res, Err(SerdeError::MissingKey(Keys::TransactionId)))
     }
 }

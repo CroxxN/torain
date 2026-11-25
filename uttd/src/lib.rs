@@ -209,7 +209,7 @@ pub enum AsyncStreamType {
 }
 
 impl<'a> AsyncStream {
-    pub async fn new(url: Url) -> Result<Self, UttdError> {
+    pub async fn new(url: &Url) -> Result<Self, UttdError> {
         match url.scheme {
             Scheme::HTTP => {
                 let stream = tokio::time::timeout(

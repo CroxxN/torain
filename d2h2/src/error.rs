@@ -3,7 +3,7 @@ use bencode::utils;
 use std::array::TryFromSliceError;
 use std::{fmt::Display, time::SystemTimeError};
 use uttd::error::UrlError;
-use uttd::url::Url;
+use uttd::UttdError;
 
 #[derive(Debug, Clone)]
 pub enum DHTError {
@@ -12,9 +12,11 @@ pub enum DHTError {
     ServerError,
     ProtocError,
     UnknownMethod,
-
     // other errors
     FailedSystemTimeGen(SystemTimeError),
+    UrlFormError(UrlError),
+    RequestError,
+    Serde(SerdeError),
 }
 
 impl DHTError {
@@ -63,6 +65,9 @@ impl Display for DHTError {
                 "Error: 203 Protocol Error: Malformed Packet or Invalid Arguments"
             ),
             DHTError::UnknownMethod => write!(f, "Error: 204 Protocol Error: Unknown Method"),
+            DHTError::UrlFormError(u) => write!(f, "Error forming url: {u}"),
+            DHTError::Serde(s) => write!(f, "Serde Error: {s}"),
+            DHTError::RequestError => write!(f, "Failed to send or receive packets"),
             DHTError::FailedSystemTimeGen(e) => {
                 write!(f, "Error: Failed to generate system time: {}", e)
             }
@@ -76,7 +81,25 @@ impl From<SystemTimeError> for DHTError {
     }
 }
 
-#[derive(Debug)]
+impl From<UrlError> for DHTError {
+    fn from(value: UrlError) -> Self {
+        Self::UrlFormError(value)
+    }
+}
+
+impl From<UttdError> for DHTError {
+    fn from(_value: UttdError) -> Self {
+        Self::RequestError
+    }
+}
+
+impl From<SerdeError> for DHTError {
+    fn from(value: SerdeError) -> Self {
+        Self::Serde(value)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum SerdeError {
     ParsingBencode(error::DecodeError),
     KeyError(utils::BencodeErr),
@@ -92,7 +115,7 @@ pub enum SerdeError {
     // TODO: Remove
     UnimplementedQueryParsing,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Keys {
     TransactionId,
     MessageType,
@@ -198,7 +221,7 @@ impl From<UrlError> for SerdeError {
 }
 
 impl From<Vec<u8>> for SerdeError {
-    fn from(value: Vec<u8>) -> Self {
+    fn from(_value: Vec<u8>) -> Self {
         Self::VecSlice
     }
 }

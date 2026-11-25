@@ -1,6 +1,6 @@
 use std::{fmt::Display, net::AddrParseError, num::ParseIntError, str::FromStr};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UrlError {
     InvalidUrl,
     ParseIntError(std::num::ParseIntError),

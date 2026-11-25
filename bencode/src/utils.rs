@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crate::bencode::{self, BTypes};
 use uttd::{error::UrlError, url::Url};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BencodeErr {
     Berr,
     InvalidUrl,

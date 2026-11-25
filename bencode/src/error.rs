@@ -1,6 +1,6 @@
 use crate::utils::BencodeErr;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DecodeError {
     EOF,
     IntParseError(std::num::ParseIntError),
